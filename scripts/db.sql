@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS venues (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uq_venues_city_name_ci
+ON venues (lower(city), lower(name));
+
 CREATE TABLE IF NOT EXISTS venue_sections (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   venue_id    UUID NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
@@ -46,7 +49,6 @@ CREATE TABLE IF NOT EXISTS events (
 
   -- references user-service user id; no foreign key
   organizer_id   UUID NOT NULL,
-  organizer_name VARCHAR(150),     -- optional snapshot
   organizer_email VARCHAR(320),    -- optional snapshot
 
   venue_id       UUID NOT NULL REFERENCES venues(id),

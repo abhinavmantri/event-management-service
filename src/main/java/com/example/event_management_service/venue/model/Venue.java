@@ -4,6 +4,7 @@ import com.example.event_management_service.shared.model.BaseEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -12,7 +13,12 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 
 @Entity
-@Table(name = "venues")
+@Table(
+        name = "venues",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_venue_name_city_address", columnNames = {"name", "city"})
+        }
+)
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -25,7 +31,7 @@ public class Venue extends BaseEntity {
     @Column(name = "city", nullable = false, length = 120)
     private String city;
 
-    @Column(name = "address", columnDefinition = "TEXT")
+    @Column(name = "address", nullable = false, columnDefinition = "TEXT")
     private String address;
 
     @Column(name = "created_at", nullable = false)
