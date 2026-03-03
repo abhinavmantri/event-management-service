@@ -9,6 +9,7 @@ import com.example.event_management_service.shared.model.ResponseStatus;
 
 import lombok.extern.slf4j.Slf4j;
 
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,6 +30,7 @@ import java.util.UUID;
 public class EventController {
     private static final String LOG_GROUP_BROWSE = "[EVENT_CONTROLLER][BROWSE_EVENTS]";
     private static final String LOG_GROUP_GET_BY_ID = "[EVENT_CONTROLLER][GET_EVENT_BY_ID]";
+    private static final String REQUEST_ID_MDC_KEY = "requestId";
     private final EventService eventService;
 
     @Autowired
@@ -45,10 +47,12 @@ public class EventController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant endDate,
             Pageable pageable
     ) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(REQUEST_ID_MDC_KEY, requestId);
         long startNanos = System.nanoTime();
         log.info(
-                "{} request: query={}, city={}, category={}, startDate={}, endDate={}, page={}, size={}",
-                LOG_GROUP_BROWSE, query, city, category, startDate, endDate, pageable.getPageNumber(), pageable.getPageSize()
+                "{} request: requestId={}, query={}, city={}, category={}, startDate={}, endDate={}, page={}, size={}",
+                LOG_GROUP_BROWSE, requestId, query, city, category, startDate, endDate, pageable.getPageNumber(), pageable.getPageSize()
         );
         EventListResponse response = new EventListResponse();
         try {
@@ -61,35 +65,41 @@ public class EventController {
             response.setPageNumber(events.getNumber());
             response.setPageSize(events.getSize());
             log.info(
-                    "{} success: totalElements={}, totalPages={}, latencyMs={}",
-                    LOG_GROUP_BROWSE, events.getTotalElements(), events.getTotalPages(), elapsedMillis(startNanos)
+                    "{} success: requestId={}, totalElements={}, totalPages={}, latencyMs={}",
+                    LOG_GROUP_BROWSE, requestId, events.getTotalElements(), events.getTotalPages(), elapsedMillis(startNanos)
             );
         } catch (Exception ex) {
             response.setResponseStatus(ResponseStatus.FAILURE);
             response.setMessage(ex.getMessage());
-            log.error("{} failure: latencyMs={}", LOG_GROUP_BROWSE, elapsedMillis(startNanos), ex);
+            log.error("{} failure: requestId={}, latencyMs={}", LOG_GROUP_BROWSE, requestId, elapsedMillis(startNanos), ex);
+        } finally {
+            MDC.remove(REQUEST_ID_MDC_KEY);
         }
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/{eventId}")
     public ResponseEntity<EventResponse> getEventById(@PathVariable UUID eventId) {
+        String requestId = UUID.randomUUID().toString();
+        MDC.put(REQUEST_ID_MDC_KEY, requestId);
         long startNanos = System.nanoTime();
-        log.info("{} request: eventId={}", LOG_GROUP_GET_BY_ID, eventId);
+        log.info("{} request: requestId={}, eventId={}", LOG_GROUP_GET_BY_ID, requestId, eventId);
         EventResponse response = new EventResponse();
         try {
             Event event = eventService.getEventById(eventId);
             response.setResponseStatus(ResponseStatus.SUCCESS);
             response.setMessage("Event fetched successfully");
             response.setEvent(event);
-            log.info("{} success: eventId={}, latencyMs={}", LOG_GROUP_GET_BY_ID, eventId, elapsedMillis(startNanos));
+            log.info("{} success: requestId={}, eventId={}, latencyMs={}", LOG_GROUP_GET_BY_ID, requestId, eventId, elapsedMillis(startNanos));
         } catch (EventNotFoundException ex) {
             response.setResponseStatus(ResponseStatus.FAILURE);
             response.setMessage(ex.getMessage());
             log.warn(
-                    "{} failure: eventId={}, reason={}, latencyMs={}",
-                    LOG_GROUP_GET_BY_ID, eventId, ex.getMessage(), elapsedMillis(startNanos)
+                    "{} failure: requestId={}, eventId={}, reason={}, latencyMs={}",
+                    LOG_GROUP_GET_BY_ID, requestId, eventId, ex.getMessage(), elapsedMillis(startNanos)
             );
+        } finally {
+            MDC.remove(REQUEST_ID_MDC_KEY);
         }
         return ResponseEntity.ok(response);
     }

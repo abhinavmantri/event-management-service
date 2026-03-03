@@ -21,6 +21,7 @@ import com.example.event_management_service.venue.repository.VenueSeatRepository
 import com.example.event_management_service.venue.repository.VenueSectionRepository;
 import jakarta.persistence.EntityManager;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -42,6 +43,7 @@ public class OrganizerEventService {
     private static final String LOG_GROUP_PUBLISH = "[ORGANIZER_EVENT_SERVICE][PUBLISH_EVENT]";
     private static final String LOG_GROUP_INVENTORY = "[ORGANIZER_EVENT_SERVICE][INITIALIZE_INVENTORY]";
     private static final String LOG_GROUP_PRICING = "[ORGANIZER_EVENT_SERVICE][CONFIGURE_PRICING]";
+    private static final String REQUEST_ID_MDC_KEY = "requestId";
     private final EventRepository eventRepository;
     private final EventSeatRepository eventSeatRepository;
     private final EventSectionPricingRepository eventSectionPricingRepository;
@@ -68,7 +70,8 @@ public class OrganizerEventService {
 
     @Transactional
     public Event createEvent(CreateEventRequest request, Map<String, Object> claims) throws EventExistsException {
-        log.info("{} request: venueId={}, title={}, startsAt={}", LOG_GROUP_CREATE, request.getVenueId(), request.getTitle(), request.getStartsAt());
+        String requestId = requestId();
+        log.info("{} request: requestId={}, venueId={}, title={}, startsAt={}", LOG_GROUP_CREATE, requestId, request.getVenueId(), request.getTitle(), request.getStartsAt());
         Instant now = Instant.now();
         String organizerId = getRequiredClaimAsText(claims, "id");
         String organizerEmail = getRequiredClaimAsText(claims, "email");
@@ -82,7 +85,7 @@ public class OrganizerEventService {
             request.getStartsAt()
         );
         if (exists) {
-            log.warn("{} failure: reason=Event already exists for organizer/venue/title/start", LOG_GROUP_CREATE);
+            log.warn("{} failure: requestId={}, reason=Event already exists for organizer/venue/title/start", LOG_GROUP_CREATE, requestId);
             throw new EventExistsException("Event already exists for this organizer, venue, title and start time");
         }
 
@@ -101,13 +104,14 @@ public class OrganizerEventService {
                 .build();
 
         Event savedEvent = eventRepository.save(event);
-        log.info("{} success: eventId={}", LOG_GROUP_CREATE, savedEvent.getId());
+        log.info("{} success: requestId={}, eventId={}", LOG_GROUP_CREATE, requestId, savedEvent.getId());
         return savedEvent;
     }
 
     @Transactional
     public Event updateEvent(UUID eventId, UpdateEventRequest request) throws EventNotFoundException {
-        log.info("{} request: eventId={}", LOG_GROUP_UPDATE, eventId);
+        String requestId = requestId();
+        log.info("{} request: requestId={}, eventId={}", LOG_GROUP_UPDATE, requestId, eventId);
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EventNotFoundException("Event not found"));
 
@@ -132,53 +136,55 @@ public class OrganizerEventService {
         }
 
         if (event.getEndsAt() != null && event.getEndsAt().isBefore(event.getStartsAt())) {
-            log.warn("{} failure: eventId={}, reason=endsAt before startsAt", LOG_GROUP_UPDATE, eventId);
+            log.warn("{} failure: requestId={}, eventId={}, reason=endsAt before startsAt", LOG_GROUP_UPDATE, requestId, eventId);
             throw new IllegalArgumentException("endsAt must be greater than or equal to startsAt");
         }
 
         event.setUpdatedAt(Instant.now());
         Event savedEvent = eventRepository.save(event);
-        log.info("{} success: eventId={}", LOG_GROUP_UPDATE, eventId);
+        log.info("{} success: requestId={}, eventId={}", LOG_GROUP_UPDATE, requestId, eventId);
         return savedEvent;
     }
 
     @Transactional
     public Event publishEvent(UUID eventId) throws EventNotFoundException, InvalidEventStateException {
-        log.info("{} request: eventId={}", LOG_GROUP_PUBLISH, eventId);
+        String requestId = requestId();
+        log.info("{} request: requestId={}, eventId={}", LOG_GROUP_PUBLISH, requestId, eventId);
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EventNotFoundException("Event not found"));
 
         if (event.getStatus() != EventStatus.DRAFT) {
-            log.warn("{} failure: eventId={}, status={}", LOG_GROUP_PUBLISH, eventId, event.getStatus());
+            log.warn("{} failure: requestId={}, eventId={}, status={}", LOG_GROUP_PUBLISH, requestId, eventId, event.getStatus());
             throw new InvalidEventStateException("Only draft events can be published");
         }
 
         event.setStatus(EventStatus.PUBLISHED);
         event.setUpdatedAt(Instant.now());
         Event savedEvent = eventRepository.save(event);
-        log.info("{} success: eventId={}", LOG_GROUP_PUBLISH, eventId);
+        log.info("{} success: requestId={}, eventId={}", LOG_GROUP_PUBLISH, requestId, eventId);
         return savedEvent;
     }
 
     @Transactional
     public long initializeEventInventory(UUID eventId) throws EventNotFoundException, InvalidEventStateException {
-        log.info("{} request: eventId={}", LOG_GROUP_INVENTORY, eventId);
+        String requestId = requestId();
+        log.info("{} request: requestId={}, eventId={}", LOG_GROUP_INVENTORY, requestId, eventId);
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EventNotFoundException("Event not found"));
 
         if (event.getStatus() != EventStatus.DRAFT) {
-            log.warn("{} failure: eventId={}, status={}", LOG_GROUP_INVENTORY, eventId, event.getStatus());
+            log.warn("{} failure: requestId={}, eventId={}, status={}", LOG_GROUP_INVENTORY, requestId, eventId, event.getStatus());
             throw new InvalidEventStateException("Inventory can be initialized only for draft or published events");
         }
 
         if (eventSeatRepository.countByEvent_Id(eventId) > 0) {
-            log.info("{} success: eventId={}, createdSeats=0, alreadyInitialized=true", LOG_GROUP_INVENTORY, eventId);
+            log.info("{} success: requestId={}, eventId={}, createdSeats=0, alreadyInitialized=true", LOG_GROUP_INVENTORY, requestId, eventId);
             return 0L;
         }
 
         List<EventSectionPricing> pricingList = eventSectionPricingRepository.findByEvent_Id(eventId);
         if (pricingList.isEmpty()) {
-            log.warn("{} failure: eventId={}, reason=missing pricing", LOG_GROUP_INVENTORY, eventId);
+            log.warn("{} failure: requestId={}, eventId={}, reason=missing pricing", LOG_GROUP_INVENTORY, requestId, eventId);
             throw new InvalidEventStateException("Configure event pricing before initializing inventory");
         }
 
@@ -189,7 +195,7 @@ public class OrganizerEventService {
 
         List<VenueSeat> venueSeats = venueSeatRepository.findByVenue_Id(event.getVenue().getId());
         if (venueSeats.isEmpty()) {
-            log.info("{} success: eventId={}, createdSeats=0, reason=no venue seats", LOG_GROUP_INVENTORY, eventId);
+            log.info("{} success: requestId={}, eventId={}, createdSeats=0, reason=no venue seats", LOG_GROUP_INVENTORY, requestId, eventId);
             return 0L;
         }
 
@@ -198,7 +204,7 @@ public class OrganizerEventService {
         for (VenueSeat venueSeat : venueSeats) {
             EventSectionPricing pricing = pricingBySectionId.get(venueSeat.getSection().getId());
             if (pricing == null) {
-                log.warn("{} failure: eventId={}, reason=missing pricing for section {}", LOG_GROUP_INVENTORY, eventId, venueSeat.getSection().getId());
+                log.warn("{} failure: requestId={}, eventId={}, reason=missing pricing for section {}", LOG_GROUP_INVENTORY, requestId, eventId, venueSeat.getSection().getId());
                 throw new InvalidEventStateException("Missing pricing for section: " + venueSeat.getSection().getId());
             }
 
@@ -215,20 +221,21 @@ public class OrganizerEventService {
         }
 
         eventSeatRepository.saveAll(eventSeats);
-        log.info("{} success: eventId={}, createdSeats={}", LOG_GROUP_INVENTORY, eventId, eventSeats.size());
+        log.info("{} success: requestId={}, eventId={}, createdSeats={}", LOG_GROUP_INVENTORY, requestId, eventId, eventSeats.size());
         return eventSeats.size();
     }
 
     @Transactional
     public List<EventSectionPricing> configureEventPricing(UUID eventId, EventPricingRequest request)
             throws EventNotFoundException, InvalidEventStateException {
+        String requestId = requestId();
         int priceItemsCount = request.getPrices() == null ? 0 : request.getPrices().size();
-        log.info("{} request: eventId={}, currency={}, priceItemsCount={}", LOG_GROUP_PRICING, eventId, request.getCurrency(), priceItemsCount);
+        log.info("{} request: requestId={}, eventId={}, currency={}, priceItemsCount={}", LOG_GROUP_PRICING, requestId, eventId, request.getCurrency(), priceItemsCount);
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EventNotFoundException("Event not found"));
 
         if (event.getStatus() != EventStatus.DRAFT) {
-            log.warn("{} failure: eventId={}, status={}", LOG_GROUP_PRICING, eventId, event.getStatus());
+            log.warn("{} failure: requestId={}, eventId={}, status={}", LOG_GROUP_PRICING, requestId, eventId, event.getStatus());
             throw new InvalidEventStateException("Pricing can be configured only for draft events");
         }
 
@@ -256,11 +263,11 @@ public class OrganizerEventService {
             }
         }
         if (!duplicateSectionIds.isEmpty()) {
-            log.warn("{} failure: eventId={}, reason=duplicate section ids", LOG_GROUP_PRICING, eventId);
+            log.warn("{} failure: requestId={}, eventId={}, reason=duplicate section ids", LOG_GROUP_PRICING, requestId, eventId);
             throw new IllegalArgumentException("Duplicate sectionId(s) in prices payload");
         }
         if (!unknownSectionIds.isEmpty()) {
-            log.warn("{} failure: eventId={}, reason=unknown section ids", LOG_GROUP_PRICING, eventId);
+            log.warn("{} failure: requestId={}, eventId={}, reason=unknown section ids", LOG_GROUP_PRICING, requestId, eventId);
             throw new IllegalArgumentException("Section(s) do not belong to the event venue: " + String.join(", ", unknownSectionIds));
         }
 
@@ -287,7 +294,7 @@ public class OrganizerEventService {
         }
 
         List<EventSectionPricing> savedPricing = eventSectionPricingRepository.saveAll(toSave);
-        log.info("{} success: eventId={}, savedPricings={}", LOG_GROUP_PRICING, eventId, savedPricing.size());
+        log.info("{} success: requestId={}, eventId={}, savedPricings={}", LOG_GROUP_PRICING, requestId, eventId, savedPricing.size());
         return savedPricing;
     }
 
@@ -327,5 +334,10 @@ public class OrganizerEventService {
             throw new IllegalArgumentException("currency must be a 3-letter ISO code");
         }
         return normalized;
+    }
+
+    private String requestId() {
+        String requestId = MDC.get(REQUEST_ID_MDC_KEY);
+        return requestId == null ? "N/A" : requestId;
     }
 }

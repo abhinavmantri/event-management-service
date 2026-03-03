@@ -5,6 +5,7 @@ import com.example.event_management_service.event.model.Event;
 import com.example.event_management_service.event.model.EventStatus;
 import com.example.event_management_service.event.repository.EventRepository;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -19,6 +20,7 @@ import java.util.UUID;
 public class EventService {
     private static final String LOG_GROUP_SEARCH = "[EVENT_SERVICE][SEARCH_PUBLIC_EVENTS]";
     private static final String LOG_GROUP_GET_BY_ID = "[EVENT_SERVICE][GET_EVENT_BY_ID]";
+    private static final String REQUEST_ID_MDC_KEY = "requestId";
     private final EventRepository eventRepository;
 
     @Autowired
@@ -34,9 +36,10 @@ public class EventService {
             String category,
             Pageable pageable
     ) {
+        String requestId = requestId();
         log.info(
-                "{} request: query={}, city={}, category={}, startDate={}, endDate={}, page={}, size={}",
-                LOG_GROUP_SEARCH, query, city, category, startDate, endDate, pageable.getPageNumber(), pageable.getPageSize()
+                "{} request: requestId={}, query={}, city={}, category={}, startDate={}, endDate={}, page={}, size={}",
+                LOG_GROUP_SEARCH, requestId, query, city, category, startDate, endDate, pageable.getPageNumber(), pageable.getPageSize()
         );
         Instant now = Instant.now();
         Pageable effectivePageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
@@ -54,18 +57,22 @@ public class EventService {
                 normalizedQuery,
                 effectivePageable
         );
-        log.info("{} success: resultCount={}, totalElements={}", LOG_GROUP_SEARCH, events.getNumberOfElements(), events.getTotalElements());
+        log.info(
+                "{} success: requestId={}, resultCount={}, totalElements={}",
+                LOG_GROUP_SEARCH, requestId, events.getNumberOfElements(), events.getTotalElements()
+        );
         return events;
     }
 
     public Event getEventById(UUID eventId) throws EventNotFoundException {
-        log.info("{} request: eventId={}", LOG_GROUP_GET_BY_ID, eventId);
+        String requestId = requestId();
+        log.info("{} request: requestId={}, eventId={}", LOG_GROUP_GET_BY_ID, requestId, eventId);
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> {
-                    log.warn("{} failure: eventId={}, reason=Event not found", LOG_GROUP_GET_BY_ID, eventId);
+                    log.warn("{} failure: requestId={}, eventId={}, reason=Event not found", LOG_GROUP_GET_BY_ID, requestId, eventId);
                     return new EventNotFoundException("Event not found");
                 });
-        log.info("{} success: eventId={}", LOG_GROUP_GET_BY_ID, eventId);
+        log.info("{} success: requestId={}, eventId={}", LOG_GROUP_GET_BY_ID, requestId, eventId);
         return event;
     }
 
@@ -74,5 +81,10 @@ public class EventService {
             return null;
         }
         return input.trim();
+    }
+
+    private String requestId() {
+        String requestId = MDC.get(REQUEST_ID_MDC_KEY);
+        return requestId == null ? "N/A" : requestId;
     }
 }

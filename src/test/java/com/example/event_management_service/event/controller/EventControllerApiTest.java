@@ -3,6 +3,7 @@ package com.example.event_management_service.event.controller;
 import com.example.event_management_service.event.exceptions.EventNotFoundException;
 import com.example.event_management_service.event.model.Event;
 import com.example.event_management_service.event.service.EventService;
+import com.example.event_management_service.shared.service.JWTService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -29,6 +30,9 @@ class EventControllerApiTest {
 
     @MockitoBean
     private EventService eventService;
+
+    @MockitoBean
+    private JWTService jwtService;
 
     @Test
     void browseEventsSuccessApiResponse() throws Exception {
