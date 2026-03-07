@@ -4,10 +4,10 @@ import com.example.event_management_service.event.dtos.*;
 import com.example.event_management_service.event.exceptions.EventExistsException;
 import com.example.event_management_service.event.exceptions.EventNotFoundException;
 import com.example.event_management_service.event.exceptions.InvalidEventStateException;
-import com.example.event_management_service.event.filter.OrganizerAuthorizationFilter;
+import com.example.event_management_service.event.filter.OrganiserAuthorizationFilter;
 import com.example.event_management_service.event.model.Event;
 import com.example.event_management_service.event.model.EventSectionPricing;
-import com.example.event_management_service.event.service.OrganizerEventService;
+import com.example.event_management_service.event.service.OrganiserEventService;
 import com.example.event_management_service.shared.model.ApiResponse;
 import com.example.event_management_service.shared.model.ResponseStatus;
 import lombok.extern.slf4j.Slf4j;
@@ -25,26 +25,26 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/organizer/events")
+@RequestMapping("/organiser/events")
 @Slf4j
-public class OrganizerEventController {
-    private static final String LOG_GROUP_CREATE = "[ORGANIZER_EVENT_CONTROLLER][CREATE_EVENT]";
-    private static final String LOG_GROUP_UPDATE = "[ORGANIZER_EVENT_CONTROLLER][UPDATE_EVENT]";
-    private static final String LOG_GROUP_PUBLISH = "[ORGANIZER_EVENT_CONTROLLER][PUBLISH_EVENT]";
-    private static final String LOG_GROUP_PRICING = "[ORGANIZER_EVENT_CONTROLLER][CONFIGURE_PRICING]";
-    private static final String LOG_GROUP_INVENTORY = "[ORGANIZER_EVENT_CONTROLLER][INITIALIZE_INVENTORY]";
+public class OrganiserEventController {
+    private static final String LOG_GROUP_CREATE = "[ORGANISER_EVENT_CONTROLLER][CREATE_EVENT]";
+    private static final String LOG_GROUP_UPDATE = "[ORGANISER_EVENT_CONTROLLER][UPDATE_EVENT]";
+    private static final String LOG_GROUP_PUBLISH = "[ORGANISER_EVENT_CONTROLLER][PUBLISH_EVENT]";
+    private static final String LOG_GROUP_PRICING = "[ORGANISER_EVENT_CONTROLLER][CONFIGURE_PRICING]";
+    private static final String LOG_GROUP_INVENTORY = "[ORGANISER_EVENT_CONTROLLER][INITIALIZE_INVENTORY]";
     private static final String REQUEST_ID_MDC_KEY = "requestId";
-    private final OrganizerEventService organizerEventService;
+    private final OrganiserEventService organiserEventService;
 
     @Autowired
-    public OrganizerEventController(OrganizerEventService organizerEventService) {
-        this.organizerEventService = organizerEventService;
+    public OrganiserEventController(OrganiserEventService organiserEventService) {
+        this.organiserEventService = organiserEventService;
     }
 
     @PostMapping
     public ResponseEntity<CreateEventResponse> createEvent(
             @Valid @RequestBody CreateEventRequest request,
-            @RequestAttribute(OrganizerAuthorizationFilter.ORGANIZER_CLAIMS_ATTRIBUTE) Map<String, Object> claims
+            @RequestAttribute(OrganiserAuthorizationFilter.ORGANISER_CLAIMS_ATTRIBUTE) Map<String, Object> claims
     ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(REQUEST_ID_MDC_KEY, requestId);
@@ -52,7 +52,7 @@ public class OrganizerEventController {
         log.info("{} request: requestId={}, venueId={}, title={}", LOG_GROUP_CREATE, requestId, request.getVenueId(), request.getTitle());
         CreateEventResponse response = new CreateEventResponse();
         try {
-            Event event = organizerEventService.createEvent(request, claims);
+            Event event = organiserEventService.createEvent(request, claims);
             
             response.setMessage("Event created successfully");
             response.setEvent(event);
@@ -83,7 +83,7 @@ public class OrganizerEventController {
         log.info("{} request: requestId={}, eventId={}", LOG_GROUP_UPDATE, requestId, eventId);
         UpdateEventResponse response = new UpdateEventResponse();
         try {
-            Event updatedEvent = organizerEventService.updateEvent(eventId, request);
+            Event updatedEvent = organiserEventService.updateEvent(eventId, request);
             response.setMessage("Event updated successfully");
             response.setEvent(updatedEvent);
             response.setResponseStatus(ResponseStatus.SUCCESS);
@@ -110,7 +110,7 @@ public class OrganizerEventController {
         log.info("{} request: requestId={}, eventId={}", LOG_GROUP_PUBLISH, requestId, eventId);
         PublishEventResponse response = new PublishEventResponse();
         try {
-            Event event = organizerEventService.publishEvent(eventId);
+            Event event = organiserEventService.publishEvent(eventId);
             response.setMessage("Event published successfully");
             response.setEventId(event.getId());
             response.setResponseStatus(ResponseStatus.SUCCESS);
@@ -141,7 +141,7 @@ public class OrganizerEventController {
         log.info("{} request: requestId={}, eventId={}, priceItemsCount={}", LOG_GROUP_PRICING, requestId, eventId, priceItemsCount);
         EventPricingResponse response = new EventPricingResponse();
         try {
-            List<EventSectionPricing> pricings = organizerEventService.configureEventPricing(eventId, request);
+            List<EventSectionPricing> pricings = organiserEventService.configureEventPricing(eventId, request);
             response.setPricings(pricings);
             response.setMessage("Event pricing configured successfully");
             response.setResponseStatus(ResponseStatus.SUCCESS);
@@ -168,7 +168,7 @@ public class OrganizerEventController {
         log.info("{} request: requestId={}, eventId={}", LOG_GROUP_INVENTORY, requestId, eventId);
         EventSeatInventory response = new EventSeatInventory();
         try {
-            long createdSeats = organizerEventService.initializeEventInventory(eventId);
+            long createdSeats = organiserEventService.initializeEventInventory(eventId);
             response.setEventId(eventId);
             response.setCreatedSeats(createdSeats);
             response.setAlreadyInitialized(createdSeats == 0);

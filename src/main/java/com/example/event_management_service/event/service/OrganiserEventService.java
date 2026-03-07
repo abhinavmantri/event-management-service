@@ -37,12 +37,12 @@ import java.util.UUID;
 
 @Service
 @Slf4j
-public class OrganizerEventService {
-    private static final String LOG_GROUP_CREATE = "[ORGANIZER_EVENT_SERVICE][CREATE_EVENT]";
-    private static final String LOG_GROUP_UPDATE = "[ORGANIZER_EVENT_SERVICE][UPDATE_EVENT]";
-    private static final String LOG_GROUP_PUBLISH = "[ORGANIZER_EVENT_SERVICE][PUBLISH_EVENT]";
-    private static final String LOG_GROUP_INVENTORY = "[ORGANIZER_EVENT_SERVICE][INITIALIZE_INVENTORY]";
-    private static final String LOG_GROUP_PRICING = "[ORGANIZER_EVENT_SERVICE][CONFIGURE_PRICING]";
+public class OrganiserEventService {
+    private static final String LOG_GROUP_CREATE = "[ORGANISER_EVENT_SERVICE][CREATE_EVENT]";
+    private static final String LOG_GROUP_UPDATE = "[ORGANISER_EVENT_SERVICE][UPDATE_EVENT]";
+    private static final String LOG_GROUP_PUBLISH = "[ORGANISER_EVENT_SERVICE][PUBLISH_EVENT]";
+    private static final String LOG_GROUP_INVENTORY = "[ORGANISER_EVENT_SERVICE][INITIALIZE_INVENTORY]";
+    private static final String LOG_GROUP_PRICING = "[ORGANISER_EVENT_SERVICE][CONFIGURE_PRICING]";
     private static final String REQUEST_ID_MDC_KEY = "requestId";
     private final EventRepository eventRepository;
     private final EventSeatRepository eventSeatRepository;
@@ -52,7 +52,7 @@ public class OrganizerEventService {
     private final EntityManager entityManager;
 
     @Autowired
-    public OrganizerEventService(
+    public OrganiserEventService(
             EventRepository eventRepository,
             EventSeatRepository eventSeatRepository,
             EventSectionPricingRepository eventSectionPricingRepository,
@@ -73,25 +73,25 @@ public class OrganizerEventService {
         String requestId = requestId();
         log.info("{} request: requestId={}, venueId={}, title={}, startsAt={}", LOG_GROUP_CREATE, requestId, request.getVenueId(), request.getTitle(), request.getStartsAt());
         Instant now = Instant.now();
-        String organizerId = getRequiredClaimAsText(claims, "id");
-        String organizerEmail = getRequiredClaimAsText(claims, "email");
-        UUID organizerUuid = UUID.fromString(organizerId);
+        String organiserId = getRequiredClaimAsText(claims, "id");
+        String organiserEmail = getRequiredClaimAsText(claims, "email");
+        UUID organiserUuid = UUID.fromString(organiserId);
         String normalizedTitle = request.getTitle().trim();
 
-        boolean exists = eventRepository.existsByOrganizerIdAndVenue_IdAndTitleIgnoreCaseAndStartsAt(
-            organizerUuid,
+        boolean exists = eventRepository.existsByOrganiserIdAndVenue_IdAndTitleIgnoreCaseAndStartsAt(
+            organiserUuid,
             request.getVenueId(),
             normalizedTitle,
             request.getStartsAt()
         );
         if (exists) {
-            log.warn("{} failure: requestId={}, reason=Event already exists for organizer/venue/title/start", LOG_GROUP_CREATE, requestId);
-            throw new EventExistsException("Event already exists for this organizer, venue, title and start time");
+            log.warn("{} failure: requestId={}, reason=Event already exists for organiser/venue/title/start", LOG_GROUP_CREATE, requestId);
+            throw new EventExistsException("Event already exists for this organiser, venue, title and start time");
         }
 
         Event event = Event.builder()
-                .organizerId(organizerUuid)
-                .organizerEmail(normalizeOptionalText(organizerEmail))
+                .organiserId(organiserUuid)
+                .organiserEmail(normalizeOptionalText(organiserEmail))
                 .venue(entityManager.getReference(Venue.class, request.getVenueId()))
                 .title(normalizedTitle)
                 .description(normalizeOptionalText(request.getDescription()))

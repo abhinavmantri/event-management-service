@@ -16,22 +16,22 @@ import java.io.IOException;
 import java.util.Map;
 
 @Component
-public class OrganizerAuthorizationFilter extends OncePerRequestFilter {
-    private static final String ORGANIZER_API_PREFIX = "/organizer/";
+public class OrganiserAuthorizationFilter extends OncePerRequestFilter {
+    private static final String ORGANISER_API_PREFIX = "/organiser/";
     private static final String AUTHORIZATION_HEADER = "Authorization";
-    public static final String ORGANIZER_CLAIMS_ATTRIBUTE = "organizerClaims";
+    public static final String ORGANISER_CLAIMS_ATTRIBUTE = "organiserClaims";
     private static final String BEARER_PREFIX = "Bearer ";
     private static final String ROLE_CLAIM = "role";
 
     private final JWTService jwtService;
 
-    public OrganizerAuthorizationFilter(JWTService jwtService) {
+    public OrganiserAuthorizationFilter(JWTService jwtService) {
         this.jwtService = jwtService;
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !request.getRequestURI().startsWith(ORGANIZER_API_PREFIX);
+        return !request.getRequestURI().startsWith(ORGANISER_API_PREFIX);
     }
 
     @Override
@@ -54,13 +54,13 @@ public class OrganizerAuthorizationFilter extends OncePerRequestFilter {
                     : authorizationToken.trim();
             Map<String, Object> claims = jwtService.validateAndExtractClaims(jwtToken);
             String role = claims.get(ROLE_CLAIM) == null ? null : claims.get(ROLE_CLAIM).toString().trim();
-            if (!UserRole.ORGANIZER.name().equalsIgnoreCase(role)) {
+            if (!UserRole.ORGANISER.name().equalsIgnoreCase(role)) {
                 response.setStatus(HttpStatus.FORBIDDEN.value());
                 response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-                response.getWriter().write("{\"message\":\"Insufficient role for organizer endpoint\"}");
+                response.getWriter().write("{\"message\":\"Insufficient role for organiser endpoint\"}");
                 return;
             }
-            request.setAttribute(ORGANIZER_CLAIMS_ATTRIBUTE, claims);
+            request.setAttribute(ORGANISER_CLAIMS_ATTRIBUTE, claims);
         } catch (IllegalArgumentException ex) {
             response.setStatus(HttpStatus.UNAUTHORIZED.value());
             response.setContentType(MediaType.APPLICATION_JSON_VALUE);

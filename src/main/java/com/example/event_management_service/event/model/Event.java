@@ -26,14 +26,14 @@ import java.util.UUID;
 @Builder
 public class Event extends BaseEntity {
 
-  @Column(name = "organizer_id", nullable = false)
-  private UUID organizerId;
+  @Column(name = "organiser_id", nullable = false)
+  private UUID organiserId;
 
-  @Column(name = "organizer_name", length = 150)
-  private String organizerName;
+  @Column(name = "organiser_name", length = 150)
+  private String organiserName;
 
-  @Column(name = "organizer_email", length = 320)
-  private String organizerEmail;
+  @Column(name = "organiser_email", length = 320)
+  private String organiserEmail;
 
   @ManyToOne(fetch = FetchType.LAZY)
   @JoinColumn(name = "venue_id", nullable = false)

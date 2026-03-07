@@ -4,7 +4,7 @@ import com.example.event_management_service.event.exceptions.EventNotFoundExcept
 import com.example.event_management_service.event.exceptions.InvalidEventStateException;
 import com.example.event_management_service.event.model.Event;
 import com.example.event_management_service.event.model.EventSectionPricing;
-import com.example.event_management_service.event.service.OrganizerEventService;
+import com.example.event_management_service.event.service.OrganiserEventService;
 import com.example.event_management_service.shared.service.JWTService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -26,21 +26,21 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@WebMvcTest(OrganizerEventController.class)
-class OrganizerEventControllerApiTest {
+@WebMvcTest(OrganiserEventController.class)
+class OrganiserEventControllerApiTest {
 
     @Autowired
     private MockMvc mockMvc;
 
     @MockitoBean
-    private OrganizerEventService organizerEventService;
+    private OrganiserEventService organiserEventService;
 
     @MockitoBean
     private JWTService jwtService;
 
     @Test
     void createEventUnauthorizedWhenTokenMissing() throws Exception {
-        mockMvc.perform(post("/organizer/events")
+        mockMvc.perform(post("/organiser/events")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -54,10 +54,10 @@ class OrganizerEventControllerApiTest {
     }
 
     @Test
-    void createEventForbiddenWhenRoleIsNotOrganizer() throws Exception {
+    void createEventForbiddenWhenRoleIsNotOrganiser() throws Exception {
         when(jwtService.validateAndExtractClaims("token-user")).thenReturn(Map.of("role", "USER"));
 
-        mockMvc.perform(post("/organizer/events")
+        mockMvc.perform(post("/organiser/events")
                         .header("Authorization", "Bearer token-user")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -68,7 +68,7 @@ class OrganizerEventControllerApiTest {
                                 }
                                 """.formatted(UUID.randomUUID(), Instant.now().plusSeconds(7200))))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("Insufficient role for organizer endpoint"));
+                .andExpect(jsonPath("$.message").value("Insufficient role for organiser endpoint"));
     }
 
     @Test
@@ -76,16 +76,16 @@ class OrganizerEventControllerApiTest {
         UUID eventId = UUID.randomUUID();
         UUID venueId = UUID.randomUUID();
         when(jwtService.validateAndExtractClaims("token-org")).thenReturn(Map.of(
-                "role", "ORGANIZER",
+                "role", "ORGANISER",
                 "id", UUID.randomUUID().toString(),
                 "email", "org@example.com"
         ));
         Event savedEvent = new Event();
         savedEvent.setId(eventId);
         savedEvent.setTitle("Rock Night");
-        when(organizerEventService.createEvent(any(), any())).thenReturn(savedEvent);
+        when(organiserEventService.createEvent(any(), any())).thenReturn(savedEvent);
 
-        mockMvc.perform(post("/organizer/events")
+        mockMvc.perform(post("/organiser/events")
                         .header("Authorization", "Bearer token-org")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -105,14 +105,14 @@ class OrganizerEventControllerApiTest {
     void updateEventNotFoundApiResponse() throws Exception {
         UUID eventId = UUID.randomUUID();
         when(jwtService.validateAndExtractClaims("token-org")).thenReturn(Map.of(
-                "role", "ORGANIZER",
+                "role", "ORGANISER",
                 "id", UUID.randomUUID().toString(),
                 "email", "org@example.com"
         ));
-        when(organizerEventService.updateEvent(eq(eventId), any()))
+        when(organiserEventService.updateEvent(eq(eventId), any()))
                 .thenThrow(new EventNotFoundException("Event not found"));
 
-        mockMvc.perform(patch("/organizer/events/{eventId}", eventId)
+        mockMvc.perform(patch("/organiser/events/{eventId}", eventId)
                         .header("Authorization", "Bearer token-org")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -130,7 +130,7 @@ class OrganizerEventControllerApiTest {
         UUID eventId = UUID.randomUUID();
         UUID sectionId = UUID.randomUUID();
         when(jwtService.validateAndExtractClaims("token-org")).thenReturn(Map.of(
-                "role", "ORGANIZER",
+                "role", "ORGANISER",
                 "id", UUID.randomUUID().toString(),
                 "email", "org@example.com"
         ));
@@ -138,9 +138,9 @@ class OrganizerEventControllerApiTest {
         pricing.setId(UUID.randomUUID());
         pricing.setCurrency("INR");
         pricing.setPriceCents(1500);
-        when(organizerEventService.configureEventPricing(eq(eventId), any())).thenReturn(List.of(pricing));
+        when(organiserEventService.configureEventPricing(eq(eventId), any())).thenReturn(List.of(pricing));
 
-        mockMvc.perform(post("/organizer/events/{eventId}/pricing", eventId)
+        mockMvc.perform(post("/organiser/events/{eventId}/pricing", eventId)
                         .header("Authorization", "Bearer token-org")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -165,14 +165,14 @@ class OrganizerEventControllerApiTest {
     void initializeInventoryBadRequestApiResponse() throws Exception {
         UUID eventId = UUID.randomUUID();
         when(jwtService.validateAndExtractClaims("token-org")).thenReturn(Map.of(
-                "role", "ORGANIZER",
+                "role", "ORGANISER",
                 "id", UUID.randomUUID().toString(),
                 "email", "org@example.com"
         ));
-        when(organizerEventService.initializeEventInventory(eventId))
+        when(organiserEventService.initializeEventInventory(eventId))
                 .thenThrow(new InvalidEventStateException("Configure event pricing before initializing inventory"));
 
-        mockMvc.perform(post("/organizer/events/{eventId}/inventory/init", eventId)
+        mockMvc.perform(post("/organiser/events/{eventId}/inventory/init", eventId)
                         .header("Authorization", "Bearer token-org"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.responseStatus").value("FAILURE"))

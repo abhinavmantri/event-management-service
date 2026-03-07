@@ -56,7 +56,8 @@ public class VenueAuthorizationFilter extends OncePerRequestFilter {
                     : authorizationToken.trim();
             Map<String, Object> claims = jwtService.validateAndExtractClaims(jwtToken);
             String role = claims.get(ROLE_CLAIM) == null ? null : claims.get(ROLE_CLAIM).toString().trim();
-            if (!UserRole.ADMIN.name().equalsIgnoreCase(role) && !UserRole.ORGANIZER.name().equalsIgnoreCase(role)) {
+            if (!UserRole.ADMIN.name().equalsIgnoreCase(role)
+                    && !UserRole.ORGANISER.name().equalsIgnoreCase(role)) {
                 response.setStatus(HttpStatus.FORBIDDEN.value());
                 response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                 response.getWriter().write("{\"message\":\"Insufficient role for venue endpoint\"}");

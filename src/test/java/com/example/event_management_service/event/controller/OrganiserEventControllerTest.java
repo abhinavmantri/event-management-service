@@ -10,7 +10,7 @@ import com.example.event_management_service.event.dtos.UpdateEventRequest;
 import com.example.event_management_service.event.exceptions.EventNotFoundException;
 import com.example.event_management_service.event.exceptions.InvalidEventStateException;
 import com.example.event_management_service.event.model.Event;
-import com.example.event_management_service.event.service.OrganizerEventService;
+import com.example.event_management_service.event.service.OrganiserEventService;
 import com.example.event_management_service.shared.model.ResponseStatus;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -32,13 +32,13 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class OrganizerEventControllerTest {
+class OrganiserEventControllerTest {
 
     @Mock
-    private OrganizerEventService organizerEventService;
+    private OrganiserEventService organiserEventService;
 
     @InjectMocks
-    private OrganizerEventController organizerEventController;
+    private OrganiserEventController organiserEventController;
 
     @Test
     void createEventSuccessReturnsCreated() {
@@ -54,14 +54,14 @@ class OrganizerEventControllerTest {
         savedEvent.setId(eventId);
         savedEvent.setTitle("Rock Night");
 
-        when(organizerEventService.createEvent(request, claims)).thenReturn(savedEvent);
+        when(organiserEventService.createEvent(request, claims)).thenReturn(savedEvent);
 
-        ResponseEntity<?> response = organizerEventController.createEvent(request, claims);
+        ResponseEntity<?> response = organiserEventController.createEvent(request, claims);
 
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
         assertEquals(ResponseStatus.SUCCESS, ((CreateEventResponse) response.getBody()).getResponseStatus());
         assertSame(savedEvent, ((CreateEventResponse) response.getBody()).getEvent());
-        verify(organizerEventService).createEvent(request, claims);
+        verify(organiserEventService).createEvent(request, claims);
     }
 
     @Test
@@ -70,9 +70,9 @@ class OrganizerEventControllerTest {
         UpdateEventRequest request = new UpdateEventRequest();
         request.setTitle("Updated");
 
-        when(organizerEventService.updateEvent(eventId, request)).thenThrow(new EventNotFoundException("Event not found"));
+        when(organiserEventService.updateEvent(eventId, request)).thenThrow(new EventNotFoundException("Event not found"));
 
-        ResponseEntity<?> response = organizerEventController.updateEvent(eventId, request);
+        ResponseEntity<?> response = organiserEventController.updateEvent(eventId, request);
 
         assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
         assertEquals(ResponseStatus.FAILURE, ((UpdateEventResponse) response.getBody()).getResponseStatus());
@@ -89,10 +89,10 @@ class OrganizerEventControllerTest {
         priceItem.setPriceCents(5000);
         request.setPrices(List.of(priceItem));
 
-        when(organizerEventService.configureEventPricing(eventId, request))
+        when(organiserEventService.configureEventPricing(eventId, request))
                 .thenThrow(new InvalidEventStateException("Pricing can be configured only for draft events"));
 
-        ResponseEntity<?> response = organizerEventController.configureEventPricing(eventId, request);
+        ResponseEntity<?> response = organiserEventController.configureEventPricing(eventId, request);
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         assertEquals(ResponseStatus.FAILURE, ((EventPricingResponse) response.getBody()).getResponseStatus());
@@ -101,9 +101,9 @@ class OrganizerEventControllerTest {
     @Test
     void initializeInventorySuccessMarksAlreadyInitializedWhenZeroSeatsCreated() {
         UUID eventId = UUID.randomUUID();
-        when(organizerEventService.initializeEventInventory(eventId)).thenReturn(0L);
+        when(organiserEventService.initializeEventInventory(eventId)).thenReturn(0L);
 
-        ResponseEntity<EventSeatInventory> response = organizerEventController.initializeEventInventory(eventId);
+        ResponseEntity<EventSeatInventory> response = organiserEventController.initializeEventInventory(eventId);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals(ResponseStatus.SUCCESS, response.getBody().getResponseStatus());

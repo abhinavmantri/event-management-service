@@ -36,7 +36,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class OrganizerEventServiceTest {
+class OrganiserEventServiceTest {
 
     @Mock
     private EventRepository eventRepository;
@@ -57,11 +57,11 @@ class OrganizerEventServiceTest {
     private EntityManager entityManager;
 
     @InjectMocks
-    private OrganizerEventService organizerEventService;
+    private OrganiserEventService organiserEventService;
 
     @Test
     void createEventNormalizesAndPersistsEvent() throws EventExistsException {
-        UUID organizerId = UUID.randomUUID();
+        UUID organiserId = UUID.randomUUID();
         UUID venueId = UUID.randomUUID();
         Instant startsAt = Instant.now().plusSeconds(3600);
 
@@ -74,14 +74,14 @@ class OrganizerEventServiceTest {
         request.setEndsAt(startsAt.plusSeconds(7200));
 
         Map<String, Object> claims = Map.of(
-                "id", organizerId.toString(),
-                "email", " organizer@example.com "
+                "id", organiserId.toString(),
+                "email", " organiser@example.com "
         );
 
         Venue venueRef = new Venue();
         when(entityManager.getReference(Venue.class, venueId)).thenReturn(venueRef);
-        when(eventRepository.existsByOrganizerIdAndVenue_IdAndTitleIgnoreCaseAndStartsAt(
-                organizerId, venueId, "Rock Night", startsAt
+        when(eventRepository.existsByOrganiserIdAndVenue_IdAndTitleIgnoreCaseAndStartsAt(
+                organiserId, venueId, "Rock Night", startsAt
         )).thenReturn(false);
         when(eventRepository.save(any(Event.class))).thenAnswer(invocation -> {
             Event event = invocation.getArgument(0);
@@ -89,7 +89,7 @@ class OrganizerEventServiceTest {
             return event;
         });
 
-        Event saved = organizerEventService.createEvent(request, claims);
+        Event saved = organiserEventService.createEvent(request, claims);
 
         ArgumentCaptor<Event> captor = ArgumentCaptor.forClass(Event.class);
         verify(eventRepository).save(captor.capture());
@@ -99,15 +99,15 @@ class OrganizerEventServiceTest {
         assertEquals("Great show", persisted.getDescription());
         assertEquals("Music", persisted.getCategory());
         assertEquals(EventStatus.DRAFT, persisted.getStatus());
-        assertEquals(organizerId, persisted.getOrganizerId());
-        assertEquals("organizer@example.com", persisted.getOrganizerEmail());
+        assertEquals(organiserId, persisted.getOrganiserId());
+        assertEquals("organiser@example.com", persisted.getOrganiserEmail());
         assertSame(venueRef, persisted.getVenue());
         assertEquals(saved.getId(), persisted.getId());
     }
 
     @Test
     void createEventThrowsWhenDuplicateExists() {
-        UUID organizerId = UUID.randomUUID();
+        UUID organiserId = UUID.randomUUID();
         UUID venueId = UUID.randomUUID();
         Instant startsAt = Instant.now().plusSeconds(3600);
 
@@ -117,20 +117,20 @@ class OrganizerEventServiceTest {
         request.setStartsAt(startsAt);
 
         Map<String, Object> claims = Map.of(
-                "id", organizerId.toString(),
-                "email", "organizer@example.com"
+                "id", organiserId.toString(),
+                "email", "organiser@example.com"
         );
 
-        when(eventRepository.existsByOrganizerIdAndVenue_IdAndTitleIgnoreCaseAndStartsAt(
-                organizerId, venueId, "Rock Night", startsAt
+        when(eventRepository.existsByOrganiserIdAndVenue_IdAndTitleIgnoreCaseAndStartsAt(
+                organiserId, venueId, "Rock Night", startsAt
         )).thenReturn(true);
 
         EventExistsException exception = assertThrows(
                 EventExistsException.class,
-                () -> organizerEventService.createEvent(request, claims)
+                () -> organiserEventService.createEvent(request, claims)
         );
 
-        assertEquals("Event already exists for this organizer, venue, title and start time", exception.getMessage());
+        assertEquals("Event already exists for this organiser, venue, title and start time", exception.getMessage());
     }
 
     @Test
@@ -148,7 +148,7 @@ class OrganizerEventServiceTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> organizerEventService.updateEvent(eventId, request)
+                () -> organiserEventService.updateEvent(eventId, request)
         );
 
         assertEquals("endsAt must be greater than or equal to startsAt", exception.getMessage());
@@ -164,7 +164,7 @@ class OrganizerEventServiceTest {
 
         InvalidEventStateException exception = assertThrows(
                 InvalidEventStateException.class,
-                () -> organizerEventService.publishEvent(eventId)
+                () -> organiserEventService.publishEvent(eventId)
         );
 
         assertEquals("Only draft events can be published", exception.getMessage());
@@ -179,7 +179,7 @@ class OrganizerEventServiceTest {
         when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
         when(eventSeatRepository.countByEvent_Id(eventId)).thenReturn(5L);
 
-        long result = organizerEventService.initializeEventInventory(eventId);
+        long result = organiserEventService.initializeEventInventory(eventId);
 
         assertEquals(0L, result);
     }
@@ -216,7 +216,7 @@ class OrganizerEventServiceTest {
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> organizerEventService.configureEventPricing(eventId, request)
+                () -> organiserEventService.configureEventPricing(eventId, request)
         );
 
         assertEquals("Duplicate sectionId(s) in prices payload", exception.getMessage());

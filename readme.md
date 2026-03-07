@@ -2,7 +2,7 @@ Venue & Event Management
 
 Venue APIs
 
-POST /api/v1/venues (ADMIN/ORGANIZER if you allow)
+POST /api/v1/venues (ADMIN/ORGANISER if you allow)
 
 GET /api/v1/venues
 
@@ -14,11 +14,11 @@ POST /api/v1/venues/{venueId}/sections/{sectionId}/seats/generate (optional conv
 
 Event APIs
 
-POST /api/v1/organizer/events
+POST /api/v1/organiser/events
 
-PATCH /api/v1/organizer/events/{eventId}
+PATCH /api/v1/organiser/events/{eventId}
 
-POST /api/v1/organizer/events/{eventId}/publish
+POST /api/v1/organiser/events/{eventId}/publish
 
 GET /api/v1/events (public browse)
 
@@ -26,7 +26,7 @@ GET /api/v1/events/{eventId}
 
 Event pricing & inventory init
 
-POST /api/v1/organizer/events/{eventId}/pricing
+POST /api/v1/organiser/events/{eventId}/pricing
 
-POST /api/v1/organizer/events/{eventId}/inventory/init
+POST /api/v1/organiser/events/{eventId}/inventory/init
 Creates event_seats from venue_seats (or auto on publish)

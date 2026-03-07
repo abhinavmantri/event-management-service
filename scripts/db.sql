@@ -48,8 +48,8 @@ CREATE TABLE IF NOT EXISTS events (
   id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
   -- references user-service user id; no foreign key
-  organizer_id   UUID NOT NULL,
-  organizer_email VARCHAR(320),    -- optional snapshot
+  organiser_id   UUID NOT NULL,
+  organiser_email VARCHAR(320),    -- optional snapshot
 
   venue_id       UUID NOT NULL REFERENCES venues(id),
 
@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS events (
   CONSTRAINT chk_event_status CHECK (status IN ('DRAFT','PUBLISHED','CANCELLED'))
 );
 
-CREATE INDEX IF NOT EXISTS idx_events_organizer     ON events(organizer_id);
+CREATE INDEX IF NOT EXISTS idx_events_organiser     ON events(organiser_id);
 CREATE INDEX IF NOT EXISTS idx_events_venue_starts  ON events(venue_id, starts_at);
 CREATE INDEX IF NOT EXISTS idx_events_status_starts ON events(status, starts_at);
 
