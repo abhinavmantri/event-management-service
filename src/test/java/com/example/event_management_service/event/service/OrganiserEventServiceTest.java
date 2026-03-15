@@ -5,7 +5,9 @@ import com.example.event_management_service.event.dtos.EventPricingRequest;
 import com.example.event_management_service.event.dtos.UpdateEventRequest;
 import com.example.event_management_service.event.exceptions.EventExistsException;
 import com.example.event_management_service.event.exceptions.InvalidEventStateException;
+import com.example.event_management_service.event.messaging.EventPublishedDomainEvent;
 import com.example.event_management_service.event.model.Event;
+import com.example.event_management_service.event.model.EventSectionPricing;
 import com.example.event_management_service.event.model.EventStatus;
 import com.example.event_management_service.event.repository.EventRepository;
 import com.example.event_management_service.event.repository.EventSeatRepository;
@@ -21,6 +23,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
 import java.util.List;
@@ -32,6 +35,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -55,6 +59,9 @@ class OrganiserEventServiceTest {
 
     @Mock
     private EntityManager entityManager;
+
+    @Mock
+    private ApplicationEventPublisher applicationEventPublisher;
 
     @InjectMocks
     private OrganiserEventService organiserEventService;
@@ -168,6 +175,78 @@ class OrganiserEventServiceTest {
         );
 
         assertEquals("Only draft events can be published", exception.getMessage());
+    }
+
+    @Test
+    void publishEventThrowsWhenPricingMissing() {
+        UUID eventId = UUID.randomUUID();
+        Event event = new Event();
+        event.setStatus(EventStatus.DRAFT);
+
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventSectionPricingRepository.findByEvent_Id(eventId)).thenReturn(List.of());
+
+        InvalidEventStateException exception = assertThrows(
+                InvalidEventStateException.class,
+                () -> organiserEventService.publishEvent(eventId)
+        );
+
+        assertEquals("Configure event pricing before publishing event", exception.getMessage());
+        verify(applicationEventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void publishEventPersistsAndPublishesDomainEvent() throws Exception {
+        UUID eventId = UUID.randomUUID();
+        UUID venueId = UUID.randomUUID();
+        UUID organiserId = UUID.randomUUID();
+        UUID sectionId = UUID.randomUUID();
+
+        Venue venue = new Venue();
+        venue.setId(venueId);
+
+        Event event = new Event();
+        event.setId(eventId);
+        event.setVenue(venue);
+        event.setOrganiserId(organiserId);
+        event.setOrganiserEmail("org@example.com");
+        event.setTitle("Rock Night");
+        event.setCategory("Music");
+        event.setStartsAt(Instant.parse("2026-04-01T18:00:00Z"));
+        event.setEndsAt(Instant.parse("2026-04-01T21:00:00Z"));
+        event.setStatus(EventStatus.DRAFT);
+
+        VenueSection section = new VenueSection();
+        section.setId(sectionId);
+        section.setName("VIP");
+        section.setSortOrder(1);
+
+        EventSectionPricing pricing = EventSectionPricing.builder()
+                .event(event)
+                .section(section)
+                .priceCents(5000)
+                .currency("INR")
+                .build();
+
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventSectionPricingRepository.findByEvent_Id(eventId)).thenReturn(List.of(pricing));
+        when(eventRepository.save(any(Event.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Event saved = organiserEventService.publishEvent(eventId);
+
+        assertSame(event, saved);
+        assertEquals(EventStatus.PUBLISHED, saved.getStatus());
+        ArgumentCaptor<Object> domainEventCaptor = ArgumentCaptor.forClass(Object.class);
+        verify(applicationEventPublisher).publishEvent(domainEventCaptor.capture());
+
+        EventPublishedDomainEvent domainEvent = (EventPublishedDomainEvent) domainEventCaptor.getValue();
+        assertEquals(eventId, domainEvent.eventId());
+        assertEquals(venueId, domainEvent.venueId());
+        assertEquals(organiserId, domainEvent.organiserId());
+        assertEquals(1, domainEvent.sectionPrices().size());
+        assertEquals(sectionId, domainEvent.sectionPrices().getFirst().sectionId());
+        assertEquals(5000, domainEvent.sectionPrices().getFirst().priceCents());
+        assertEquals("INR", domainEvent.sectionPrices().getFirst().currency());
     }
 
     @Test

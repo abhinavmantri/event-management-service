@@ -6,6 +6,8 @@ import com.example.event_management_service.event.dtos.UpdateEventRequest;
 import com.example.event_management_service.event.exceptions.EventExistsException;
 import com.example.event_management_service.event.exceptions.EventNotFoundException;
 import com.example.event_management_service.event.exceptions.InvalidEventStateException;
+import com.example.event_management_service.event.messaging.EventPublishedDomainEvent;
+import com.example.event_management_service.event.messaging.EventPublishedKafkaMessage;
 import com.example.event_management_service.event.model.Event;
 import com.example.event_management_service.event.model.EventSeat;
 import com.example.event_management_service.event.model.EventSeatStatus;
@@ -23,6 +25,7 @@ import jakarta.persistence.EntityManager;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -50,6 +53,7 @@ public class OrganiserEventService {
     private final VenueSeatRepository venueSeatRepository;
     private final VenueSectionRepository venueSectionRepository;
     private final EntityManager entityManager;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     @Autowired
     public OrganiserEventService(
@@ -58,7 +62,8 @@ public class OrganiserEventService {
             EventSectionPricingRepository eventSectionPricingRepository,
             VenueSeatRepository venueSeatRepository,
             VenueSectionRepository venueSectionRepository,
-            EntityManager entityManager
+            EntityManager entityManager,
+            ApplicationEventPublisher applicationEventPublisher
     ) {
         this.eventRepository = eventRepository;
         this.eventSeatRepository = eventSeatRepository;
@@ -66,6 +71,7 @@ public class OrganiserEventService {
         this.venueSeatRepository = venueSeatRepository;
         this.venueSectionRepository = venueSectionRepository;
         this.entityManager = entityManager;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     @Transactional
@@ -158,9 +164,17 @@ public class OrganiserEventService {
             throw new InvalidEventStateException("Only draft events can be published");
         }
 
+        List<EventSectionPricing> pricingList = eventSectionPricingRepository.findByEvent_Id(eventId);
+        if (pricingList.isEmpty()) {
+            log.warn("{} failure: requestId={}, eventId={}, reason=missing pricing", LOG_GROUP_PUBLISH, requestId, eventId);
+            throw new InvalidEventStateException("Configure event pricing before publishing event");
+        }
+
+        Instant publishedAt = Instant.now();
         event.setStatus(EventStatus.PUBLISHED);
-        event.setUpdatedAt(Instant.now());
+        event.setUpdatedAt(publishedAt);
         Event savedEvent = eventRepository.save(event);
+        applicationEventPublisher.publishEvent(buildEventPublishedDomainEvent(savedEvent, pricingList, publishedAt));
         log.info("{} success: requestId={}, eventId={}", LOG_GROUP_PUBLISH, requestId, eventId);
         return savedEvent;
     }
@@ -339,5 +353,34 @@ public class OrganiserEventService {
     private String requestId() {
         String requestId = MDC.get(REQUEST_ID_MDC_KEY);
         return requestId == null ? "N/A" : requestId;
+    }
+
+    private EventPublishedDomainEvent buildEventPublishedDomainEvent(
+            Event event,
+            List<EventSectionPricing> pricingList,
+            Instant publishedAt
+    ) {
+        List<EventPublishedKafkaMessage.SectionPrice> sectionPrices = pricingList.stream()
+                .map(pricing -> new EventPublishedKafkaMessage.SectionPrice(
+                        pricing.getSection().getId(),
+                        pricing.getSection().getName(),
+                        pricing.getSection().getSortOrder(),
+                        pricing.getPriceCents(),
+                        pricing.getCurrency()
+                ))
+                .toList();
+
+        return new EventPublishedDomainEvent(
+                event.getId(),
+                event.getVenue().getId(),
+                event.getOrganiserId(),
+                event.getOrganiserEmail(),
+                event.getTitle(),
+                event.getCategory(),
+                event.getStartsAt(),
+                event.getEndsAt(),
+                publishedAt,
+                sectionPrices
+        );
     }
 }
