@@ -12,6 +12,10 @@ import java.time.Instant;
 import java.util.UUID;
 
 public interface EventRepository extends JpaRepository<Event, UUID> {
+    java.util.Optional<Event> findByIdAndOrganiserId(UUID id, UUID organiserId);
+
+    java.util.Optional<Event> findByIdAndStatus(UUID id, EventStatus status);
+
     boolean existsByOrganiserIdAndVenue_IdAndTitleIgnoreCaseAndStartsAt(
             UUID organiserId,
             UUID venueId,

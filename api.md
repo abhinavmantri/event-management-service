@@ -5,11 +5,13 @@ The **Event Management Service** is responsible for managing events, ticket cate
 
 This service handles:
 - event creation and updates
-- event publishing/unpublishing
+- event publishing
 - event retrieval
-- ticket type configuration
+- section-level pricing configuration
 - event listing and filtering
-- inventory metadata exposure for downstream services
+- venue management
+- venue seat generation
+- event inventory initialization
 
 It does **not** handle:
 - seat locking
@@ -25,22 +27,17 @@ Those responsibilities belong to Booking/Ticket Service and Payment Service.
 
 ## Local
 ```text
-http://localhost:8081
+http://localhost:8081/event-management-service/v1
 ```
 
-## Gateway
+## Context Path
 ```text
-https://api.ticket-platform.com/event-service
-```
-
-## Version
-```text
-/v1
+/event-management-service/v1
 ```
 
 Example:
 ```text
-http://localhost:8081/v1/events
+http://localhost:8081/event-management-service/v1/events
 ```
 
 ---
@@ -61,10 +58,8 @@ Content-Type: application/json
 
 | Role | Access |
 |------|--------|
-| ADMIN | Full access to create, update, publish, unpublish, delete events |
-| ORGANIZER | Can create and manage own events |
-| CUSTOMER | Can only view published events |
-| INTERNAL_SERVICE | Internal read/update APIs used by trusted downstream services |
+| ORGANISER | Can create and manage own events on organiser routes |
+| PUBLIC | Can browse published events and fetch published event details |
 
 ---
 
@@ -73,21 +68,12 @@ Content-Type: application/json
 ## Event
 An event represents a show, concert, play, sports match, or any scheduled occurrence at a venue.
 
-## Ticket Type
-Each event can have one or more ticket categories such as:
-- VIP
-- Premium
-- General
-- Balcony
-
 ## Event Status
 Possible states:
 
 - `DRAFT`
 - `PUBLISHED`
-- `UNPUBLISHED`
 - `CANCELLED`
-- `COMPLETED`
 
 ---
 
@@ -95,36 +81,18 @@ Possible states:
 
 ```json
 {
-  "eventId": "evt_10001",
-  "organizerId": "org_501",
-  "eventName": "Coldplay Live in Bangalore",
+  "id": "f5cf6f1c-0bd0-4cb8-bf75-9e5645f914d6",
+  "organiserId": "8db2c7d7-e3cb-4f5a-89d8-a67f6de62f26",
+  "organiserEmail": "organiser@example.com",
+  "venue": {
+    "id": "5d06b702-4ff8-4f4b-92c7-22d90c1da4bb"
+  },
+  "title": "Coldplay Live in Bangalore",
   "description": "Live concert at Bangalore Stadium",
   "category": "MUSIC",
-  "language": "ENGLISH",
-  "venueId": "ven_301",
-  "city": "Bangalore",
-  "country": "India",
-  "startTime": "2026-06-21T19:00:00Z",
-  "endTime": "2026-06-21T23:00:00Z",
+  "startsAt": "2026-06-21T19:00:00Z",
+  "endsAt": "2026-06-21T23:00:00Z",
   "status": "PUBLISHED",
-  "currency": "INR",
-  "tags": ["concert", "live", "coldplay"],
-  "ticketTypes": [
-    {
-      "ticketTypeId": "tt_11",
-      "name": "VIP",
-      "price": 7500,
-      "totalCapacity": 500,
-      "description": "Closest seating with perks"
-    },
-    {
-      "ticketTypeId": "tt_12",
-      "name": "General",
-      "price": 2500,
-      "totalCapacity": 5000,
-      "description": "General admission"
-    }
-  ],
   "createdAt": "2026-03-15T10:20:00Z",
   "updatedAt": "2026-03-15T11:00:00Z"
 }
@@ -137,28 +105,38 @@ Possible states:
 ## Common Response Wrapper
 ```json
 {
-  "success": true,
-  "data": {},
-  "meta": {}
+  "responseStatus": "SUCCESS",
+  "message": "Operation completed successfully",
+  "...endpointSpecificFields": {}
 }
 ```
 
 ## Common Error Wrapper
 ```json
 {
-  "success": false,
-  "error": {
-    "code": "EVENT_NOT_FOUND",
-    "message": "Event does not exist",
-    "details": []
-  },
-  "timestamp": "2026-03-15T11:15:20Z"
+  "responseStatus": "FAILURE",
+  "message": "Event not found"
 }
 ```
+
+## Current Response Shapes
+- All current controller responses extend `ApiResponse`
+- Common fields:
+  - `responseStatus`: `SUCCESS` or `FAILURE`
+  - `message`: human-readable status message
+- Event create/get/update responses include `event`
+- Event list responses include `events`, `totalElements`, `totalPages`, `pageNumber`, `pageSize`
+- Publish responses include `eventId`
+- Pricing responses include `pricings`
+- Inventory initialization responses include `eventId`, `createdSeats`, `alreadyInitialized`
 
 ---
 
 # Endpoints
+
+> Current implementation note:
+> The implemented routes are the ones documented with current path examples in this file and in the endpoint summary near the end of this file.
+> Later sections that describe delete, unpublish, cancel, ticket-type APIs, discovery/search, and internal APIs are future/planned APIs and are not aligned to the current codebase.
 
 ---
 
@@ -168,41 +146,21 @@ Creates a new event in `DRAFT` state.
 
 ## Endpoint
 ```http
-POST /v1/events
+POST /organiser/events
 ```
 
 ## Access
-- `ADMIN`
-- `ORGANIZER`
+- `ORGANISER`
 
 ## Request Body
 ```json
 {
-  "eventName": "Coldplay Live in Bangalore",
+  "venueId": "5d06b702-4ff8-4f4b-92c7-22d90c1da4bb",
+  "title": "Coldplay Live in Bangalore",
   "description": "Live concert at Bangalore Stadium",
   "category": "MUSIC",
-  "language": "ENGLISH",
-  "venueId": "ven_301",
-  "city": "Bangalore",
-  "country": "India",
-  "startTime": "2026-06-21T19:00:00Z",
-  "endTime": "2026-06-21T23:00:00Z",
-  "currency": "INR",
-  "tags": ["concert", "live", "coldplay"],
-  "ticketTypes": [
-    {
-      "name": "VIP",
-      "price": 7500,
-      "totalCapacity": 500,
-      "description": "Closest seating with perks"
-    },
-    {
-      "name": "General",
-      "price": 2500,
-      "totalCapacity": 5000,
-      "description": "General admission"
-    }
-  ]
+  "startsAt": "2026-06-21T19:00:00Z",
+  "endsAt": "2026-06-21T23:00:00Z"
 }
 ```
 
@@ -210,22 +168,31 @@ POST /v1/events
 **201 Created**
 ```json
 {
-  "success": true,
-  "data": {
-    "eventId": "evt_10001",
-    "status": "DRAFT"
+  "responseStatus": "SUCCESS",
+  "message": "Event created successfully",
+  "event": {
+    "id": "f5cf6f1c-0bd0-4cb8-bf75-9e5645f914d6",
+    "organiserId": "8db2c7d7-e3cb-4f5a-89d8-a67f6de62f26",
+    "organiserEmail": "organiser@example.com",
+    "title": "Coldplay Live in Bangalore",
+    "description": "Live concert at Bangalore Stadium",
+    "category": "MUSIC",
+    "startsAt": "2026-06-21T19:00:00Z",
+    "endsAt": "2026-06-21T23:00:00Z",
+    "status": "DRAFT",
+    "createdAt": "2026-03-15T10:20:00Z",
+    "updatedAt": "2026-03-15T10:20:00Z"
   }
 }
 ```
 
 ## Validation Rules
-- `eventName` is required
+- `title` is required
 - `venueId` is required
-- `startTime` must be before `endTime`
-- at least one ticket type is required
-- ticket type names must be unique within the event
-- price must be >= 0
-- totalCapacity must be > 0
+- `startsAt` is required
+- `startsAt` must be a future date-time
+- if provided, `endsAt` must be a future date-time
+- if both are provided, `endsAt` must be greater than or equal to `startsAt`
 
 ---
 
@@ -235,13 +202,12 @@ Returns complete event details.
 
 ## Endpoint
 ```http
-GET /v1/events/{eventId}
+GET /events/{eventId}
 ```
 
 ## Access
-- `ADMIN`
-- `ORGANIZER` for owned events
-- `CUSTOMER` only if event is `PUBLISHED`
+- Public access
+- Only published events are returned
 
 ## Path Params
 | Param | Type | Description |
@@ -252,38 +218,18 @@ GET /v1/events/{eventId}
 **200 OK**
 ```json
 {
-  "success": true,
-  "data": {
-    "eventId": "evt_10001",
-    "organizerId": "org_501",
-    "eventName": "Coldplay Live in Bangalore",
+  "responseStatus": "SUCCESS",
+  "message": "Event fetched successfully",
+  "event": {
+    "id": "f5cf6f1c-0bd0-4cb8-bf75-9e5645f914d6",
+    "organiserId": "8db2c7d7-e3cb-4f5a-89d8-a67f6de62f26",
+    "organiserEmail": "organiser@example.com",
+    "title": "Coldplay Live in Bangalore",
     "description": "Live concert at Bangalore Stadium",
     "category": "MUSIC",
-    "language": "ENGLISH",
-    "venueId": "ven_301",
-    "city": "Bangalore",
-    "country": "India",
-    "startTime": "2026-06-21T19:00:00Z",
-    "endTime": "2026-06-21T23:00:00Z",
-    "status": "PUBLISHED",
-    "currency": "INR",
-    "tags": ["concert", "live", "coldplay"],
-    "ticketTypes": [
-      {
-        "ticketTypeId": "tt_11",
-        "name": "VIP",
-        "price": 7500,
-        "totalCapacity": 500,
-        "description": "Closest seating with perks"
-      },
-      {
-        "ticketTypeId": "tt_12",
-        "name": "General",
-        "price": 2500,
-        "totalCapacity": 5000,
-        "description": "General admission"
-      }
-    ]
+    "startsAt": "2026-06-21T19:00:00Z",
+    "endsAt": "2026-06-21T23:00:00Z",
+    "status": "PUBLISHED"
   }
 }
 ```
@@ -296,58 +242,49 @@ Returns paginated event list with filters.
 
 ## Endpoint
 ```http
-GET /v1/events
+GET /events
 ```
 
 ## Access
 - Public for published events
-- Admin/Organizer can optionally view broader scopes
 
 ## Query Params
 
 | Param | Type | Required | Description |
 |------|------|----------|-------------|
+| query | string | No | Search term for title |
 | city | string | No | Filter by city |
 | category | string | No | Filter by category |
-| venueId | string | No | Filter by venue |
-| status | string | No | Mainly for admin/organizer |
-| startDate | string | No | ISO date filter lower bound |
-| endDate | string | No | ISO date filter upper bound |
-| search | string | No | Search by event name/tags |
+| startDate | string | No | ISO date-time lower bound |
+| endDate | string | No | ISO date-time upper bound |
 | page | int | No | Default 0 |
 | size | int | No | Default 20 |
-| sortBy | string | No | `startTime`, `createdAt`, `eventName` |
-| sortOrder | string | No | `asc`, `desc` |
+| sort | string | No | Spring pageable sort parameter |
 
 ## Example
 ```http
-GET /v1/events?city=Bangalore&category=MUSIC&page=0&size=10&sortBy=startTime&sortOrder=asc
+GET /events?query=coldplay&city=Bangalore&category=MUSIC&page=0&size=10
 ```
 
 ## Response
 ```json
 {
-  "success": true,
-  "data": {
-    "items": [
-      {
-        "eventId": "evt_10001",
-        "eventName": "Coldplay Live in Bangalore",
-        "category": "MUSIC",
-        "venueId": "ven_301",
-        "city": "Bangalore",
-        "startTime": "2026-06-21T19:00:00Z",
-        "endTime": "2026-06-21T23:00:00Z",
-        "status": "PUBLISHED",
-        "currency": "INR",
-        "startingPrice": 2500
-      }
-    ],
-    "page": 0,
-    "size": 10,
-    "totalElements": 1,
-    "totalPages": 1
-  }
+  "responseStatus": "SUCCESS",
+  "message": "Events fetched successfully",
+  "events": [
+    {
+      "id": "f5cf6f1c-0bd0-4cb8-bf75-9e5645f914d6",
+      "title": "Coldplay Live in Bangalore",
+      "category": "MUSIC",
+      "startsAt": "2026-06-21T19:00:00Z",
+      "endsAt": "2026-06-21T23:00:00Z",
+      "status": "PUBLISHED"
+    }
+  ],
+  "pageNumber": 0,
+  "pageSize": 10,
+  "totalElements": 1,
+  "totalPages": 1
 }
 ```
 
@@ -359,40 +296,92 @@ Updates mutable event fields.
 
 ## Endpoint
 ```http
-PUT /v1/events/{eventId}
+PATCH /organiser/events/{eventId}
 ```
 
 ## Access
-- `ADMIN`
-- owning `ORGANIZER`
+- owning `ORGANISER`
 
 ## Rules
-- update allowed only for `DRAFT` and `UNPUBLISHED`
-- for `PUBLISHED`, only limited fields may be editable depending on business rules
-- start time changes may be blocked once bookings begin
+- current implementation validates organiser ownership by JWT claim
+- current implementation does not restrict updates by event status
+- `endsAt` must not be before `startsAt`
 
 ## Request Body
 ```json
 {
-  "eventName": "Coldplay Live in Bengaluru",
+  "title": "Coldplay Live in Bengaluru",
   "description": "Updated concert description",
   "category": "MUSIC",
-  "language": "ENGLISH",
-  "startTime": "2026-06-21T19:30:00Z",
-  "endTime": "2026-06-21T23:30:00Z",
-  "tags": ["concert", "live", "coldplay", "bengaluru"]
+  "startsAt": "2026-06-21T19:30:00Z",
+  "endsAt": "2026-06-21T23:30:00Z"
 }
 ```
 
 ## Response
 ```json
 {
-  "success": true,
-  "data": {
-    "eventId": "evt_10001",
-    "status": "DRAFT",
-    "updated": true
+  "responseStatus": "SUCCESS",
+  "message": "Event updated successfully",
+  "event": {
+    "id": "f5cf6f1c-0bd0-4cb8-bf75-9e5645f914d6",
+    "title": "Coldplay Live in Bengaluru",
+    "description": "Updated concert description",
+    "category": "MUSIC",
+    "startsAt": "2026-06-21T19:30:00Z",
+    "endsAt": "2026-06-21T23:30:00Z",
+    "status": "DRAFT"
   }
+}
+```
+
+---
+
+# Current Implemented Endpoint: Configure Event Pricing
+
+Configures section-level pricing for an event.
+
+## Endpoint
+```http
+POST /organiser/events/{eventId}/pricing
+```
+
+## Request Body
+```json
+{
+  "currency": "INR",
+  "prices": [
+    {
+      "sectionId": "2ac22535-b6cd-4294-8295-45b7d5146626",
+      "priceCents": 750000
+    },
+    {
+      "sectionId": "cf5d375a-95ce-43ce-a04b-b395c7d8ab6c",
+      "priceCents": 250000
+    }
+  ]
+}
+```
+
+## Validation Rules
+- `currency` is required
+- `prices` must not be empty
+- each price item requires `sectionId`
+- each price item requires `priceCents`
+- `priceCents` must be greater than `0`
+
+## Response
+```json
+{
+  "responseStatus": "SUCCESS",
+  "message": "Event pricing configured successfully",
+  "pricings": [
+    {
+      "id": "38af9893-e6b6-4257-b942-9907e9640b8a",
+      "priceCents": 750000,
+      "currency": "INR"
+    }
+  ]
 }
 ```
 
@@ -428,27 +417,49 @@ Moves event from `DRAFT` or `UNPUBLISHED` to `PUBLISHED`.
 
 ## Endpoint
 ```http
-POST /v1/events/{eventId}/publish
+POST /organiser/events/{eventId}/publish
 ```
 
 ## Access
-- `ADMIN`
-- owning `ORGANIZER`
+- owning `ORGANISER`
 
 ## Preconditions
-- mandatory event fields populated
-- venue exists and is active
-- at least one valid ticket type configured
-- start time must be in future
+- event must belong to the authenticated organiser
+- event status must be `DRAFT`
+- pricing must already be configured
 
 ## Response
 ```json
 {
-  "success": true,
-  "data": {
-    "eventId": "evt_10001",
-    "status": "PUBLISHED"
-  }
+  "responseStatus": "SUCCESS",
+  "message": "Event published successfully",
+  "eventId": "f5cf6f1c-0bd0-4cb8-bf75-9e5645f914d6"
+}
+```
+
+---
+
+# Current Implemented Endpoint: Initialize Event Inventory
+
+Creates event seat inventory for the event from venue seats.
+
+## Endpoint
+```http
+POST /organiser/events/{eventId}/inventory/init
+```
+
+## Request Body
+
+No request body.
+
+## Response
+```json
+{
+  "responseStatus": "SUCCESS",
+  "message": "Event inventory initialized successfully",
+  "eventId": "f5cf6f1c-0bd0-4cb8-bf75-9e5645f914d6",
+  "createdSeats": 120,
+  "alreadyInitialized": false
 }
 ```
 
@@ -987,7 +998,7 @@ Consumers may include:
 
 # Example Sequence: Publish Event
 
-1. Organizer calls `POST /v1/events/{eventId}/publish`
+1. Organizer calls `POST /organiser/events/{eventId}/publish`
 2. Event service validates event completeness
 3. Event state changes to `PUBLISHED`
 4. Service emits `EVENT_PUBLISHED`
@@ -1013,23 +1024,19 @@ Consumers may include:
 
 | Method | Endpoint | Description |
 |-------|----------|-------------|
-| POST | `/v1/events` | Create event |
-| GET | `/v1/events/{eventId}` | Get event details |
-| GET | `/v1/events` | List events |
-| PUT | `/v1/events/{eventId}` | Update event |
-| DELETE | `/v1/events/{eventId}` | Delete event |
-| POST | `/v1/events/{eventId}/publish` | Publish event |
-| POST | `/v1/events/{eventId}/unpublish` | Unpublish event |
-| POST | `/v1/events/{eventId}/cancel` | Cancel event |
-| POST | `/v1/events/{eventId}/ticket-types` | Add ticket type |
-| PUT | `/v1/events/{eventId}/ticket-types/{ticketTypeId}` | Update ticket type |
-| DELETE | `/v1/events/{eventId}/ticket-types/{ticketTypeId}` | Delete ticket type |
-| GET | `/v1/events/{eventId}/ticket-types` | Get ticket types |
-| GET | `/v1/events/discovery` | Discovery listing |
-| GET | `/v1/events/search` | Search events |
-| GET | `/internal/v1/events/{eventId}/inventory-metadata` | Internal inventory metadata |
-| POST | `/internal/v1/events/{eventId}/validate-booking` | Internal booking validation |
-| POST | `/internal/v1/events/{eventId}/complete` | Mark event completed |
+| GET | `/events` | Browse public events |
+| GET | `/events/{eventId}` | Get event details |
+| POST | `/organiser/events` | Create event |
+| PATCH | `/organiser/events/{eventId}` | Update event |
+| POST | `/organiser/events/{eventId}/publish` | Publish event |
+| POST | `/organiser/events/{eventId}/pricing` | Configure section pricing |
+| POST | `/organiser/events/{eventId}/inventory/init` | Initialize event inventory |
+
+All routes above are served under the application context path:
+
+```text
+/event-management-service/v1
+```
 
 ---
 

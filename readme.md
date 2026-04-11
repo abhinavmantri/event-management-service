@@ -9,6 +9,7 @@ It owns:
 - venue seats
 - events
 - event pricing
+- event seat inventory
 - public event browse/search APIs
 
 It does **not** own:
@@ -27,10 +28,9 @@ It does **not** own:
 - create venue sections and venue seats
 - create and manage events
 - configure section-level pricing for events
-- initialize inventory through seat-allocation-service
-- publish / cancel events
+- initialize event seat inventory from venue seats
+- publish events
 - provide public browse and event detail APIs
-- provide internal venue seat layout APIs for downstream services
 
 ### Not owned by this service
 - authentication and user profile storage
@@ -46,11 +46,6 @@ It does **not** own:
 - API Gateway
 - user-service (JWT issued upstream)
 
-### Internal Downstream
-- seat-allocation-service
-
----
-
 ## Data Ownership
 
 ### This service database owns
@@ -59,14 +54,12 @@ It does **not** own:
 - `venue_seats`
 - `events`
 - `event_section_pricing`
+- `event_seats`
 
 ### This service does not store
-- `event_seats`
 - lock state
 - booking state
 - payment state
-
-`event_seats` is owned by **seat-allocation-service**.
 
 ---
 
@@ -125,12 +118,12 @@ Represents a scheduled program at a venue.
 
 Fields:
 - `id`
-- `organizerId`
-- `venueId`
+- `organiserId`
+- `organiserEmail`
+- `venue`
 - `title`
 - `description`
 - `category`
-- `currency`
 - `startsAt`
 - `endsAt`
 - `status`
@@ -143,7 +136,7 @@ Fields:
 - `CANCELLED`
 
 Notes:
-- `organizerId` is an external reference from `user-service`
+- `organiserId` is an external reference from `user-service`
 - no foreign key to users table is maintained in this service
 
 ---
@@ -153,42 +146,31 @@ Represents section-level price configuration for an event.
 
 Fields:
 - `id`
-- `eventId`
-- `sectionId`
-- `priceMinor`
+- `event`
+- `section`
+- `priceCents`
+- `currency`
 
 Notes:
-- currency is owned at event level
+- currency is stored on each pricing row
+- prices are stored in integer minor units as `priceCents`
 - pricing is configured before inventory initialization
-- pricing updates after inventory initialization are not allowed in MVP
-
----
-
-## Currency Model
-
-- Currency is stored at **event level**
-- All seats of an event use the same currency
-- Prices are stored in **minor units**
-  - INR: paise
-  - USD: cents
-- Example:
-  - ₹1500 => `150000`
-
-This service stores:
-- `events.currency`
-- `event_section_pricing.price_minor`
 
 ---
 
 ## Public APIs
 
+All routes below are served under the application context path:
+
+`/event-management-service/v1`
+
 ## Browse Events
 Returns paginated published events for customers.
 
-`GET /api/v1/events`
+`GET /events`
 
 ### Supported filters
-- `q`
+- `query`
 - `category`
 - `city`
 - `startDate`
@@ -207,15 +189,15 @@ Returns paginated published events for customers.
 ## Get Event Detail
 Returns event details for a single published event.
 
-`GET /api/v1/events/{eventId}`
+`GET /events/{eventId}`
 
 ---
 
 ## Venue Read APIs
 Optional public or restricted read APIs depending on product needs.
 
-`GET /api/v1/venues`
-`GET /api/v1/venues/{venueId}`
+`GET /venues`
+`GET /venues/{venueId}`
 
 ---
 
@@ -224,21 +206,21 @@ Optional public or restricted read APIs depending on product needs.
 ## Create Venue
 Creates a new venue.
 
-`POST /api/v1/organizer/venues`
+`POST /venues`
 
 ---
 
 ## Add Venue Section
 Creates a section under a venue.
 
-`POST /api/v1/organizer/venues/{venueId}/sections`
+`POST /venues/{venueId}/sections`
 
 ---
 
 ## Generate Venue Seats
 Generates venue seats for a section based on layout input.
 
-`POST /api/v1/organizer/venues/{venueId}/sections/{sectionId}/seats/generate`
+`POST /venues/{venueId}/sections/{sectionId}/seats/generate`
 
 ### Business Logic
 - validates that section belongs to venue
@@ -251,55 +233,53 @@ Generates venue seats for a section based on layout input.
 ## Create Event
 Creates an event in `DRAFT` state.
 
-`POST /api/v1/organizer/events`
+`POST /organiser/events`
 
 ### Notes
-- `organizerId` is derived from JWT
-- organizer information is not accepted from request body
+- `organiserId` is derived from JWT
+- organiser information is not accepted from request body
 
 ---
 
 ## Update Event
 Updates an existing event.
 
-`PATCH /api/v1/organizer/events/{eventId}`
+`PATCH /organiser/events/{eventId}`
 
 ### Rules
-- `DRAFT` events are fully editable
-- `PUBLISHED` events allow only safe/non-breaking fields in future expansion
-- MVP recommendation:
-  - allow updates only in `DRAFT`
-  - allow cancel separately
+- current implementation validates organiser ownership by JWT claim
+- current implementation allows updates regardless of status
+- request validation still enforces valid date ordering
 
 ---
 
 ## Set Event Pricing
 Configures full section pricing for the event.
 
-`PUT /api/v1/organizer/events/{eventId}/pricing`
+`POST /organiser/events/{eventId}/pricing`
 
 ### Notes
-- request must include complete pricing for all required sections
 - pricing is section-based
-- pricing is stored in minor units
-- partial pricing should be rejected for inventory initialization path
+- pricing is stored in integer minor units as `priceCents`
+- duplicate section ids are rejected
+- section ids must belong to the event venue
 
 ---
 
 ## Initialize Inventory
-Triggers creation of event seat inventory in seat-allocation-service.
+Creates local `event_seats` from venue seats for the event.
 
-`POST /api/v1/organizer/events/{eventId}/inventory/init`
+`POST /organiser/events/{eventId}/inventory/init`
 
 ### Flow
 1. validate organizer ownership
 2. validate event status is `DRAFT`
 3. validate pricing is configured
-4. internally call seat-allocation-service
-5. allocation service creates `event_seats` in its own database
+4. load venue seats for the event venue
+5. create `event_seats` in this service database
 
 ### Notes
-- this service does **not** store `event_seats`
+- this service stores `event_seats`
 - this endpoint is synchronous because inventory creation is correctness-critical
 
 ---
@@ -307,56 +287,22 @@ Triggers creation of event seat inventory in seat-allocation-service.
 ## Publish Event
 Publishes event for customer visibility.
 
-`POST /api/v1/organizer/events/{eventId}/publish`
+`POST /organiser/events/{eventId}/publish`
 
 ### Rules
-- inventory must be initialized before publish
+- current implementation requires pricing before publish
 - pricing must already exist
-- only organizer owner or admin may publish
-
----
-
-## Cancel Event
-Cancels an event.
-
-`POST /api/v1/organizer/events/{eventId}/cancel`
-
----
-
-## Internal APIs
-
-## Get Venue Seats
-Returns venue seat layout for internal service consumption.
-
-`GET /internal/v1/venues/{venueId}/seats`
-
-### Used by
-- seat-allocation-service during inventory initialization
-
-### Security
-- internal-only
-- not exposed publicly through gateway
-- protected by service-to-service auth
+- only the owning organiser can publish
 
 ---
 
 ## Inter-Service Communication
 
 ### Synchronous Calls
-This service uses synchronous communication only for correctness-critical paths.
-
-#### Event Management -> Seat Allocation
-- inventory initialization
-
-Reason:
-- event publish / inventory setup requires immediate success or failure
+This service uses synchronous in-process persistence for correctness-critical paths.
 
 ### Asynchronous Communication
-Not required for current core event setup path.
-Can be added later for:
-- search projections
-- analytics
-- audit trail
+The current implementation publishes an `EVENT_PUBLISHED` style domain event to Kafka after publish.
 
 ---
 
@@ -364,28 +310,22 @@ Can be added later for:
 
 ### Public/Organizer APIs
 - authenticated through JWT validated at gateway/resource server layer
-- organizer ownership enforced in service logic
-- organizer id is taken from JWT claims
-
-### Internal APIs
-- `/internal/**` endpoints are not publicly exposed
-- protected using service-to-service authentication such as shared internal auth header
-- should also be network-restricted
+- organiser ownership is enforced for organiser mutation operations
+- organiser id is taken from JWT claims
 
 ---
 
 ## Business Rules
 
 - user data is not stored in this service database
-- `organizerId` is an external reference
+- `organiserId` is an external reference
 - venue names are unique within a city
 - section names are unique within a venue
 - seat codes are unique within a venue
-- currency is event-level
-- prices are stored in minor units
-- inventory state is owned by seat-allocation-service
+- prices are stored in minor units as `priceCents`
+- inventory state is stored locally in `event_seats`
 - pricing must be configured before inventory initialization
-- inventory must be initialized before publish
+- current implementation does not require inventory initialization before publish
 - published events are served through public browse APIs only
 
 ---
@@ -399,7 +339,7 @@ Can be added later for:
 
 ### Pricing Rules
 - pricing is configured before inventory init
-- no pricing updates after inventory init in MVP
+- pricing is allowed only while the event is `DRAFT`
 
 ### Venue Rules
 - venue seat generation is allowed before event publication
@@ -426,31 +366,31 @@ Venue & Event Management
 
 Venue APIs
 
-POST /api/v1/venues (ADMIN/ORGANISER if you allow)
+POST /event-management-service/v1/venues
 
-GET /api/v1/venues
+GET /event-management-service/v1/venues
 
-GET /api/v1/venues/{venueId}
+GET /event-management-service/v1/venues/{venueId}
 
-POST /api/v1/venues/{venueId}/sections
+POST /event-management-service/v1/venues/{venueId}/sections
 
-POST /api/v1/venues/{venueId}/sections/{sectionId}/seats/generate (optional convenience)
+POST /event-management-service/v1/venues/{venueId}/sections/{sectionId}/seats/generate (optional convenience)
 
 Event APIs
 
-POST /api/v1/organiser/events
+POST /event-management-service/v1/organiser/events
 
-PATCH /api/v1/organiser/events/{eventId}
+PATCH /event-management-service/v1/organiser/events/{eventId}
 
-POST /api/v1/organiser/events/{eventId}/publish
+POST /event-management-service/v1/organiser/events/{eventId}/publish
 
-GET /api/v1/events (public browse)
+GET /event-management-service/v1/events (public browse)
 
-GET /api/v1/events/{eventId}
+GET /event-management-service/v1/events/{eventId}
 
 Event pricing & inventory init
 
-POST /api/v1/organiser/events/{eventId}/pricing
+POST /event-management-service/v1/organiser/events/{eventId}/pricing
 
-POST /api/v1/organiser/events/{eventId}/inventory/init
-Creates event_seats from venue_seats (or auto on publish)
+POST /event-management-service/v1/organiser/events/{eventId}/inventory/init
+Creates local event_seats from venue_seats

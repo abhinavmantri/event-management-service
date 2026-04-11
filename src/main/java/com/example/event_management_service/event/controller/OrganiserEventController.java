@@ -75,7 +75,8 @@ public class OrganiserEventController {
     @PatchMapping("/{eventId}")
     public ResponseEntity<UpdateEventResponse> updateEvent(
             @PathVariable UUID eventId,
-            @Valid @RequestBody UpdateEventRequest request
+            @Valid @RequestBody UpdateEventRequest request,
+            @RequestAttribute(OrganiserAuthorizationFilter.ORGANISER_CLAIMS_ATTRIBUTE) Map<String, Object> claims
     ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(REQUEST_ID_MDC_KEY, requestId);
@@ -83,7 +84,7 @@ public class OrganiserEventController {
         log.info("{} request: requestId={}, eventId={}", LOG_GROUP_UPDATE, requestId, eventId);
         UpdateEventResponse response = new UpdateEventResponse();
         try {
-            Event updatedEvent = organiserEventService.updateEvent(eventId, request);
+            Event updatedEvent = organiserEventService.updateEvent(eventId, request, claims);
             response.setMessage("Event updated successfully");
             response.setEvent(updatedEvent);
             response.setResponseStatus(ResponseStatus.SUCCESS);
@@ -103,14 +104,17 @@ public class OrganiserEventController {
     }
 
     @PostMapping("/{eventId}/publish")
-    public ResponseEntity<PublishEventResponse> publishEvent(@PathVariable UUID eventId) {
+    public ResponseEntity<PublishEventResponse> publishEvent(
+            @PathVariable UUID eventId,
+            @RequestAttribute(OrganiserAuthorizationFilter.ORGANISER_CLAIMS_ATTRIBUTE) Map<String, Object> claims
+    ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(REQUEST_ID_MDC_KEY, requestId);
         long startNanos = System.nanoTime();
         log.info("{} request: requestId={}, eventId={}", LOG_GROUP_PUBLISH, requestId, eventId);
         PublishEventResponse response = new PublishEventResponse();
         try {
-            Event event = organiserEventService.publishEvent(eventId);
+            Event event = organiserEventService.publishEvent(eventId, claims);
             response.setMessage("Event published successfully");
             response.setEventId(event.getId());
             response.setResponseStatus(ResponseStatus.SUCCESS);
@@ -132,7 +136,8 @@ public class OrganiserEventController {
     @PostMapping("/{eventId}/pricing")
     public ResponseEntity<EventPricingResponse> configureEventPricing(
             @PathVariable UUID eventId,
-            @Valid @RequestBody EventPricingRequest request
+            @Valid @RequestBody EventPricingRequest request,
+            @RequestAttribute(OrganiserAuthorizationFilter.ORGANISER_CLAIMS_ATTRIBUTE) Map<String, Object> claims
     ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(REQUEST_ID_MDC_KEY, requestId);
@@ -141,7 +146,7 @@ public class OrganiserEventController {
         log.info("{} request: requestId={}, eventId={}, priceItemsCount={}", LOG_GROUP_PRICING, requestId, eventId, priceItemsCount);
         EventPricingResponse response = new EventPricingResponse();
         try {
-            List<EventSectionPricing> pricings = organiserEventService.configureEventPricing(eventId, request);
+            List<EventSectionPricing> pricings = organiserEventService.configureEventPricing(eventId, request, claims);
             response.setPricings(pricings);
             response.setMessage("Event pricing configured successfully");
             response.setResponseStatus(ResponseStatus.SUCCESS);
@@ -161,14 +166,17 @@ public class OrganiserEventController {
     }
 
     @PostMapping("/{eventId}/inventory/init")
-    public ResponseEntity<EventSeatInventory> initializeEventInventory(@PathVariable UUID eventId) {
+    public ResponseEntity<EventSeatInventory> initializeEventInventory(
+            @PathVariable UUID eventId,
+            @RequestAttribute(OrganiserAuthorizationFilter.ORGANISER_CLAIMS_ATTRIBUTE) Map<String, Object> claims
+    ) {
         String requestId = UUID.randomUUID().toString();
         MDC.put(REQUEST_ID_MDC_KEY, requestId);
         long startNanos = System.nanoTime();
         log.info("{} request: requestId={}, eventId={}", LOG_GROUP_INVENTORY, requestId, eventId);
         EventSeatInventory response = new EventSeatInventory();
         try {
-            long createdSeats = organiserEventService.initializeEventInventory(eventId);
+            long createdSeats = organiserEventService.initializeEventInventory(eventId, claims);
             response.setEventId(eventId);
             response.setCreatedSeats(createdSeats);
             response.setAlreadyInitialized(createdSeats == 0);

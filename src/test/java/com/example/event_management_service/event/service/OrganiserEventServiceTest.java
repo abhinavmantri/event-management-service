@@ -41,6 +41,7 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class OrganiserEventServiceTest {
+    private static final UUID DEFAULT_ORGANISER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
     @Mock
     private EventRepository eventRepository;
@@ -151,11 +152,11 @@ class OrganiserEventServiceTest {
         UpdateEventRequest request = new UpdateEventRequest();
         request.setEndsAt(start.minusSeconds(60));
 
-        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventRepository.findByIdAndOrganiserId(eventId, DEFAULT_ORGANISER_ID)).thenReturn(Optional.of(event));
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> organiserEventService.updateEvent(eventId, request)
+                () -> organiserEventService.updateEvent(eventId, request, organiserClaims())
         );
 
         assertEquals("endsAt must be greater than or equal to startsAt", exception.getMessage());
@@ -167,11 +168,11 @@ class OrganiserEventServiceTest {
         Event event = new Event();
         event.setStatus(EventStatus.PUBLISHED);
 
-        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventRepository.findByIdAndOrganiserId(eventId, DEFAULT_ORGANISER_ID)).thenReturn(Optional.of(event));
 
         InvalidEventStateException exception = assertThrows(
                 InvalidEventStateException.class,
-                () -> organiserEventService.publishEvent(eventId)
+                () -> organiserEventService.publishEvent(eventId, organiserClaims())
         );
 
         assertEquals("Only draft events can be published", exception.getMessage());
@@ -183,12 +184,12 @@ class OrganiserEventServiceTest {
         Event event = new Event();
         event.setStatus(EventStatus.DRAFT);
 
-        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventRepository.findByIdAndOrganiserId(eventId, DEFAULT_ORGANISER_ID)).thenReturn(Optional.of(event));
         when(eventSectionPricingRepository.findByEvent_Id(eventId)).thenReturn(List.of());
 
         InvalidEventStateException exception = assertThrows(
                 InvalidEventStateException.class,
-                () -> organiserEventService.publishEvent(eventId)
+                () -> organiserEventService.publishEvent(eventId, organiserClaims())
         );
 
         assertEquals("Configure event pricing before publishing event", exception.getMessage());
@@ -228,11 +229,14 @@ class OrganiserEventServiceTest {
                 .currency("INR")
                 .build();
 
-        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventRepository.findByIdAndOrganiserId(eventId, organiserId)).thenReturn(Optional.of(event));
         when(eventSectionPricingRepository.findByEvent_Id(eventId)).thenReturn(List.of(pricing));
         when(eventRepository.save(any(Event.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Event saved = organiserEventService.publishEvent(eventId);
+        Event saved = organiserEventService.publishEvent(
+                eventId,
+                Map.of("id", organiserId.toString(), "email", "org@example.com")
+        );
 
         assertSame(event, saved);
         assertEquals(EventStatus.PUBLISHED, saved.getStatus());
@@ -255,10 +259,10 @@ class OrganiserEventServiceTest {
         Event event = new Event();
         event.setStatus(EventStatus.DRAFT);
 
-        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventRepository.findByIdAndOrganiserId(eventId, DEFAULT_ORGANISER_ID)).thenReturn(Optional.of(event));
         when(eventSeatRepository.countByEvent_Id(eventId)).thenReturn(5L);
 
-        long result = organiserEventService.initializeEventInventory(eventId);
+        long result = organiserEventService.initializeEventInventory(eventId, organiserClaims());
 
         assertEquals(0L, result);
     }
@@ -290,14 +294,21 @@ class OrganiserEventServiceTest {
         request.setCurrency("inr");
         request.setPrices(List.of(p1, p2));
 
-        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventRepository.findByIdAndOrganiserId(eventId, DEFAULT_ORGANISER_ID)).thenReturn(Optional.of(event));
         when(venueSectionRepository.findByVenue_Id(venueId)).thenReturn(List.of(section));
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> organiserEventService.configureEventPricing(eventId, request)
+                () -> organiserEventService.configureEventPricing(eventId, request, organiserClaims())
         );
 
         assertEquals("Duplicate sectionId(s) in prices payload", exception.getMessage());
+    }
+
+    private Map<String, Object> organiserClaims() {
+        return Map.of(
+                "id", DEFAULT_ORGANISER_ID.toString(),
+                "email", "organiser@example.com"
+        );
     }
 }

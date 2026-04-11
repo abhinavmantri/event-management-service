@@ -115,10 +115,11 @@ public class OrganiserEventService {
     }
 
     @Transactional
-    public Event updateEvent(UUID eventId, UpdateEventRequest request) throws EventNotFoundException {
+    public Event updateEvent(UUID eventId, UpdateEventRequest request, Map<String, Object> claims) throws EventNotFoundException {
         String requestId = requestId();
         log.info("{} request: requestId={}, eventId={}", LOG_GROUP_UPDATE, requestId, eventId);
-        Event event = eventRepository.findById(eventId)
+        UUID organiserId = UUID.fromString(getRequiredClaimAsText(claims, "id"));
+        Event event = eventRepository.findByIdAndOrganiserId(eventId, organiserId)
                 .orElseThrow(() -> new EventNotFoundException("Event not found"));
 
         if (request.getTitle() != null) {
@@ -153,10 +154,11 @@ public class OrganiserEventService {
     }
 
     @Transactional
-    public Event publishEvent(UUID eventId) throws EventNotFoundException, InvalidEventStateException {
+    public Event publishEvent(UUID eventId, Map<String, Object> claims) throws EventNotFoundException, InvalidEventStateException {
         String requestId = requestId();
         log.info("{} request: requestId={}, eventId={}", LOG_GROUP_PUBLISH, requestId, eventId);
-        Event event = eventRepository.findById(eventId)
+        UUID organiserId = UUID.fromString(getRequiredClaimAsText(claims, "id"));
+        Event event = eventRepository.findByIdAndOrganiserId(eventId, organiserId)
                 .orElseThrow(() -> new EventNotFoundException("Event not found"));
 
         if (event.getStatus() != EventStatus.DRAFT) {
@@ -180,10 +182,11 @@ public class OrganiserEventService {
     }
 
     @Transactional
-    public long initializeEventInventory(UUID eventId) throws EventNotFoundException, InvalidEventStateException {
+    public long initializeEventInventory(UUID eventId, Map<String, Object> claims) throws EventNotFoundException, InvalidEventStateException {
         String requestId = requestId();
         log.info("{} request: requestId={}, eventId={}", LOG_GROUP_INVENTORY, requestId, eventId);
-        Event event = eventRepository.findById(eventId)
+        UUID organiserId = UUID.fromString(getRequiredClaimAsText(claims, "id"));
+        Event event = eventRepository.findByIdAndOrganiserId(eventId, organiserId)
                 .orElseThrow(() -> new EventNotFoundException("Event not found"));
 
         if (event.getStatus() != EventStatus.DRAFT) {
@@ -240,12 +243,13 @@ public class OrganiserEventService {
     }
 
     @Transactional
-    public List<EventSectionPricing> configureEventPricing(UUID eventId, EventPricingRequest request)
+    public List<EventSectionPricing> configureEventPricing(UUID eventId, EventPricingRequest request, Map<String, Object> claims)
             throws EventNotFoundException, InvalidEventStateException {
         String requestId = requestId();
         int priceItemsCount = request.getPrices() == null ? 0 : request.getPrices().size();
         log.info("{} request: requestId={}, eventId={}, currency={}, priceItemsCount={}", LOG_GROUP_PRICING, requestId, eventId, request.getCurrency(), priceItemsCount);
-        Event event = eventRepository.findById(eventId)
+        UUID organiserId = UUID.fromString(getRequiredClaimAsText(claims, "id"));
+        Event event = eventRepository.findByIdAndOrganiserId(eventId, organiserId)
                 .orElseThrow(() -> new EventNotFoundException("Event not found"));
 
         if (event.getStatus() != EventStatus.DRAFT) {

@@ -69,10 +69,11 @@ class OrganiserEventControllerTest {
         UUID eventId = UUID.randomUUID();
         UpdateEventRequest request = new UpdateEventRequest();
         request.setTitle("Updated");
+        Map<String, Object> claims = Map.of("id", UUID.randomUUID().toString(), "email", "org@example.com");
 
-        when(organiserEventService.updateEvent(eventId, request)).thenThrow(new EventNotFoundException("Event not found"));
+        when(organiserEventService.updateEvent(eventId, request, claims)).thenThrow(new EventNotFoundException("Event not found"));
 
-        ResponseEntity<?> response = organiserEventController.updateEvent(eventId, request);
+        ResponseEntity<?> response = organiserEventController.updateEvent(eventId, request, claims);
 
         assertEquals(HttpStatus.NOT_FOUND, response.getStatusCode());
         assertEquals(ResponseStatus.FAILURE, ((UpdateEventResponse) response.getBody()).getResponseStatus());
@@ -82,6 +83,7 @@ class OrganiserEventControllerTest {
     @Test
     void configureEventPricingBadRequestOnInvalidState() {
         UUID eventId = UUID.randomUUID();
+        Map<String, Object> claims = Map.of("id", UUID.randomUUID().toString(), "email", "org@example.com");
         EventPricingRequest request = new EventPricingRequest();
         request.setCurrency("INR");
         EventPricingRequest.PriceItem priceItem = new EventPricingRequest.PriceItem();
@@ -89,10 +91,10 @@ class OrganiserEventControllerTest {
         priceItem.setPriceCents(5000);
         request.setPrices(List.of(priceItem));
 
-        when(organiserEventService.configureEventPricing(eventId, request))
+        when(organiserEventService.configureEventPricing(eventId, request, claims))
                 .thenThrow(new InvalidEventStateException("Pricing can be configured only for draft events"));
 
-        ResponseEntity<?> response = organiserEventController.configureEventPricing(eventId, request);
+        ResponseEntity<?> response = organiserEventController.configureEventPricing(eventId, request, claims);
 
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
         assertEquals(ResponseStatus.FAILURE, ((EventPricingResponse) response.getBody()).getResponseStatus());
@@ -101,9 +103,10 @@ class OrganiserEventControllerTest {
     @Test
     void initializeInventorySuccessMarksAlreadyInitializedWhenZeroSeatsCreated() {
         UUID eventId = UUID.randomUUID();
-        when(organiserEventService.initializeEventInventory(eventId)).thenReturn(0L);
+        Map<String, Object> claims = Map.of("id", UUID.randomUUID().toString(), "email", "org@example.com");
+        when(organiserEventService.initializeEventInventory(eventId, claims)).thenReturn(0L);
 
-        ResponseEntity<EventSeatInventory> response = organiserEventController.initializeEventInventory(eventId);
+        ResponseEntity<EventSeatInventory> response = organiserEventController.initializeEventInventory(eventId, claims);
 
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals(ResponseStatus.SUCCESS, response.getBody().getResponseStatus());

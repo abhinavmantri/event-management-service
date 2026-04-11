@@ -67,9 +67,9 @@ public class EventService {
     public Event getEventById(UUID eventId) throws EventNotFoundException {
         String requestId = requestId();
         log.info("{} request: requestId={}, eventId={}", LOG_GROUP_GET_BY_ID, requestId, eventId);
-        Event event = eventRepository.findById(eventId)
+        Event event = eventRepository.findByIdAndStatus(eventId, EventStatus.PUBLISHED)
                 .orElseThrow(() -> {
-                    log.warn("{} failure: requestId={}, eventId={}, reason=Event not found", LOG_GROUP_GET_BY_ID, requestId, eventId);
+                    log.warn("{} failure: requestId={}, eventId={}, reason=Published event not found", LOG_GROUP_GET_BY_ID, requestId, eventId);
                     return new EventNotFoundException("Event not found");
                 });
         log.info("{} success: requestId={}, eventId={}", LOG_GROUP_GET_BY_ID, requestId, eventId);

@@ -109,7 +109,7 @@ class OrganiserEventControllerApiTest {
                 "id", UUID.randomUUID().toString(),
                 "email", "org@example.com"
         ));
-        when(organiserEventService.updateEvent(eq(eventId), any()))
+        when(organiserEventService.updateEvent(eq(eventId), any(), any()))
                 .thenThrow(new EventNotFoundException("Event not found"));
 
         mockMvc.perform(patch("/organiser/events/{eventId}", eventId)
@@ -138,7 +138,7 @@ class OrganiserEventControllerApiTest {
         pricing.setId(UUID.randomUUID());
         pricing.setCurrency("INR");
         pricing.setPriceCents(1500);
-        when(organiserEventService.configureEventPricing(eq(eventId), any())).thenReturn(List.of(pricing));
+        when(organiserEventService.configureEventPricing(eq(eventId), any(), any())).thenReturn(List.of(pricing));
 
         mockMvc.perform(post("/organiser/events/{eventId}/pricing", eventId)
                         .header("Authorization", "Bearer token-org")
@@ -169,7 +169,7 @@ class OrganiserEventControllerApiTest {
                 "id", UUID.randomUUID().toString(),
                 "email", "org@example.com"
         ));
-        when(organiserEventService.initializeEventInventory(eventId))
+        when(organiserEventService.initializeEventInventory(eq(eventId), any()))
                 .thenThrow(new InvalidEventStateException("Configure event pricing before initializing inventory"));
 
         mockMvc.perform(post("/organiser/events/{eventId}/inventory/init", eventId)

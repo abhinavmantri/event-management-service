@@ -81,18 +81,18 @@ class EventServiceTest {
     void getEventByIdReturnsEventWhenFound() {
         UUID eventId = UUID.randomUUID();
         Event event = new Event();
-        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventRepository.findByIdAndStatus(eventId, EventStatus.PUBLISHED)).thenReturn(Optional.of(event));
 
         Event result = eventService.getEventById(eventId);
 
         assertSame(event, result);
-        verify(eventRepository).findById(eventId);
+        verify(eventRepository).findByIdAndStatus(eventId, EventStatus.PUBLISHED);
     }
 
     @Test
     void getEventByIdThrowsWhenEventMissing() {
         UUID eventId = UUID.randomUUID();
-        when(eventRepository.findById(eventId)).thenReturn(Optional.empty());
+        when(eventRepository.findByIdAndStatus(eventId, EventStatus.PUBLISHED)).thenReturn(Optional.empty());
 
         EventNotFoundException exception = assertThrows(
                 EventNotFoundException.class,
@@ -100,6 +100,6 @@ class EventServiceTest {
         );
 
         assertEquals("Event not found", exception.getMessage());
-        verify(eventRepository).findById(eventId);
+        verify(eventRepository).findByIdAndStatus(eventId, EventStatus.PUBLISHED);
     }
 }
