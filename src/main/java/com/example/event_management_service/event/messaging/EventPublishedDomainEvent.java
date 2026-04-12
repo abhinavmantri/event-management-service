@@ -14,6 +14,7 @@ public record EventPublishedDomainEvent(
         Instant startsAt,
         Instant endsAt,
         Instant publishedAt,
-        List<EventPublishedKafkaMessage.SectionPrice> sectionPrices
+        List<EventPublishedKafkaMessage.SectionPrice> sectionPrices,
+        List<EventPublishedKafkaMessage.SeatInventory> seats
 ) {
 }

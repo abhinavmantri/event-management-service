@@ -44,7 +44,17 @@ class EventPublishedKafkaPublisherTest {
                 Instant.parse("2026-04-01T18:00:00Z"),
                 Instant.parse("2026-04-01T21:00:00Z"),
                 Instant.parse("2026-03-15T10:00:00Z"),
-                List.of(new EventPublishedKafkaMessage.SectionPrice(UUID.randomUUID(), "VIP", 1, 5000, "INR"))
+                List.of(new EventPublishedKafkaMessage.SectionPrice(UUID.randomUUID(), "VIP", 1, 5000, "INR")),
+                List.of(new EventPublishedKafkaMessage.SeatInventory(
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        UUID.randomUUID(),
+                        "VIP-R01-S01",
+                        "R01",
+                        1,
+                        5000,
+                        "INR"
+                ))
         );
         EventPublishedKafkaMessage expectedMessage = EventPublishedKafkaMessage.from(domainEvent);
 
@@ -74,5 +84,6 @@ class EventPublishedKafkaPublisherTest {
         assertEquals(EventPublishedKafkaMessage.EVENT_TYPE, message.eventType());
         assertEquals(eventId, message.eventId());
         assertEquals(domainEvent.sectionPrices(), message.sectionPrices());
+        assertEquals(domainEvent.seats(), message.seats());
     }
 }

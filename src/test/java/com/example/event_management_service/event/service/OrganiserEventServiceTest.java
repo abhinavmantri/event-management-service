@@ -7,12 +7,14 @@ import com.example.event_management_service.event.exceptions.EventExistsExceptio
 import com.example.event_management_service.event.exceptions.InvalidEventStateException;
 import com.example.event_management_service.event.messaging.EventPublishedDomainEvent;
 import com.example.event_management_service.event.model.Event;
+import com.example.event_management_service.event.model.EventSeat;
 import com.example.event_management_service.event.model.EventSectionPricing;
 import com.example.event_management_service.event.model.EventStatus;
 import com.example.event_management_service.event.repository.EventRepository;
 import com.example.event_management_service.event.repository.EventSeatRepository;
 import com.example.event_management_service.event.repository.EventSectionPricingRepository;
 import com.example.event_management_service.venue.model.Venue;
+import com.example.event_management_service.venue.model.VenueSeat;
 import com.example.event_management_service.venue.model.VenueSection;
 import com.example.event_management_service.venue.repository.VenueSeatRepository;
 import com.example.event_management_service.venue.repository.VenueSectionRepository;
@@ -41,7 +43,6 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class OrganiserEventServiceTest {
-    private static final UUID DEFAULT_ORGANISER_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
     @Mock
     private EventRepository eventRepository;
@@ -152,11 +153,11 @@ class OrganiserEventServiceTest {
         UpdateEventRequest request = new UpdateEventRequest();
         request.setEndsAt(start.minusSeconds(60));
 
-        when(eventRepository.findByIdAndOrganiserId(eventId, DEFAULT_ORGANISER_ID)).thenReturn(Optional.of(event));
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> organiserEventService.updateEvent(eventId, request, organiserClaims())
+                () -> organiserEventService.updateEvent(eventId, request)
         );
 
         assertEquals("endsAt must be greater than or equal to startsAt", exception.getMessage());
@@ -168,11 +169,11 @@ class OrganiserEventServiceTest {
         Event event = new Event();
         event.setStatus(EventStatus.PUBLISHED);
 
-        when(eventRepository.findByIdAndOrganiserId(eventId, DEFAULT_ORGANISER_ID)).thenReturn(Optional.of(event));
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
 
         InvalidEventStateException exception = assertThrows(
                 InvalidEventStateException.class,
-                () -> organiserEventService.publishEvent(eventId, organiserClaims())
+                () -> organiserEventService.publishEvent(eventId)
         );
 
         assertEquals("Only draft events can be published", exception.getMessage());
@@ -184,15 +185,45 @@ class OrganiserEventServiceTest {
         Event event = new Event();
         event.setStatus(EventStatus.DRAFT);
 
-        when(eventRepository.findByIdAndOrganiserId(eventId, DEFAULT_ORGANISER_ID)).thenReturn(Optional.of(event));
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
         when(eventSectionPricingRepository.findByEvent_Id(eventId)).thenReturn(List.of());
 
         InvalidEventStateException exception = assertThrows(
                 InvalidEventStateException.class,
-                () -> organiserEventService.publishEvent(eventId, organiserClaims())
+                () -> organiserEventService.publishEvent(eventId)
         );
 
         assertEquals("Configure event pricing before publishing event", exception.getMessage());
+        verify(applicationEventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void publishEventThrowsWhenInventoryMissing() {
+        UUID eventId = UUID.randomUUID();
+        Event event = new Event();
+        event.setStatus(EventStatus.DRAFT);
+
+        VenueSection section = new VenueSection();
+        section.setId(UUID.randomUUID());
+        section.setName("VIP");
+        section.setSortOrder(1);
+        EventSectionPricing pricing = EventSectionPricing.builder()
+                .event(event)
+                .section(section)
+                .priceCents(5000)
+                .currency("INR")
+                .build();
+
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventSectionPricingRepository.findByEvent_Id(eventId)).thenReturn(List.of(pricing));
+        when(eventSeatRepository.findByEvent_Id(eventId)).thenReturn(List.of());
+
+        InvalidEventStateException exception = assertThrows(
+                InvalidEventStateException.class,
+                () -> organiserEventService.publishEvent(eventId)
+        );
+
+        assertEquals("Initialize event inventory before publishing event", exception.getMessage());
         verify(applicationEventPublisher, never()).publishEvent(any());
     }
 
@@ -222,21 +253,40 @@ class OrganiserEventServiceTest {
         section.setName("VIP");
         section.setSortOrder(1);
 
+        VenueSeat venueSeat = VenueSeat.builder()
+                .seatCode("VIP-R01-S01")
+                .rowLabel("R01")
+                .seatNumber(1)
+                .section(section)
+                .venue(venue)
+                .createdAt(Instant.now())
+                .build();
+        venueSeat.setId(UUID.randomUUID());
+
         EventSectionPricing pricing = EventSectionPricing.builder()
                 .event(event)
                 .section(section)
                 .priceCents(5000)
                 .currency("INR")
                 .build();
+        EventSeat eventSeat = EventSeat.builder()
+                .event(event)
+                .venueSeat(venueSeat)
+                .section(section)
+                .priceCents(5000)
+                .currency("INR")
+                .status(com.example.event_management_service.event.model.EventSeatStatus.AVAILABLE)
+                .version(0)
+                .createdAt(Instant.now())
+                .build();
+        eventSeat.setId(UUID.randomUUID());
 
-        when(eventRepository.findByIdAndOrganiserId(eventId, organiserId)).thenReturn(Optional.of(event));
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
         when(eventSectionPricingRepository.findByEvent_Id(eventId)).thenReturn(List.of(pricing));
+        when(eventSeatRepository.findByEvent_Id(eventId)).thenReturn(List.of(eventSeat));
         when(eventRepository.save(any(Event.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Event saved = organiserEventService.publishEvent(
-                eventId,
-                Map.of("id", organiserId.toString(), "email", "org@example.com")
-        );
+        Event saved = organiserEventService.publishEvent(eventId);
 
         assertSame(event, saved);
         assertEquals(EventStatus.PUBLISHED, saved.getStatus());
@@ -251,6 +301,10 @@ class OrganiserEventServiceTest {
         assertEquals(sectionId, domainEvent.sectionPrices().getFirst().sectionId());
         assertEquals(5000, domainEvent.sectionPrices().getFirst().priceCents());
         assertEquals("INR", domainEvent.sectionPrices().getFirst().currency());
+        assertEquals(1, domainEvent.seats().size());
+        assertEquals(eventSeat.getId(), domainEvent.seats().getFirst().eventSeatId());
+        assertEquals(venueSeat.getId(), domainEvent.seats().getFirst().venueSeatId());
+        assertEquals(sectionId, domainEvent.seats().getFirst().sectionId());
     }
 
     @Test
@@ -259,10 +313,10 @@ class OrganiserEventServiceTest {
         Event event = new Event();
         event.setStatus(EventStatus.DRAFT);
 
-        when(eventRepository.findByIdAndOrganiserId(eventId, DEFAULT_ORGANISER_ID)).thenReturn(Optional.of(event));
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
         when(eventSeatRepository.countByEvent_Id(eventId)).thenReturn(5L);
 
-        long result = organiserEventService.initializeEventInventory(eventId, organiserClaims());
+        long result = organiserEventService.initializeEventInventory(eventId);
 
         assertEquals(0L, result);
     }
@@ -294,21 +348,14 @@ class OrganiserEventServiceTest {
         request.setCurrency("inr");
         request.setPrices(List.of(p1, p2));
 
-        when(eventRepository.findByIdAndOrganiserId(eventId, DEFAULT_ORGANISER_ID)).thenReturn(Optional.of(event));
+        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
         when(venueSectionRepository.findByVenue_Id(venueId)).thenReturn(List.of(section));
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> organiserEventService.configureEventPricing(eventId, request, organiserClaims())
+                () -> organiserEventService.configureEventPricing(eventId, request)
         );
 
         assertEquals("Duplicate sectionId(s) in prices payload", exception.getMessage());
-    }
-
-    private Map<String, Object> organiserClaims() {
-        return Map.of(
-                "id", DEFAULT_ORGANISER_ID.toString(),
-                "email", "organiser@example.com"
-        );
     }
 }

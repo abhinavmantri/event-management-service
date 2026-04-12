@@ -15,7 +15,8 @@ public record EventPublishedKafkaMessage(
         Instant startsAt,
         Instant endsAt,
         Instant publishedAt,
-        List<SectionPrice> sectionPrices
+        List<SectionPrice> sectionPrices,
+        List<SeatInventory> seats
 ) {
     public static final String EVENT_TYPE = "EVENT_PUBLISHED";
 
@@ -31,7 +32,8 @@ public record EventPublishedKafkaMessage(
                 domainEvent.startsAt(),
                 domainEvent.endsAt(),
                 domainEvent.publishedAt(),
-                List.copyOf(domainEvent.sectionPrices())
+                List.copyOf(domainEvent.sectionPrices()),
+                List.copyOf(domainEvent.seats())
         );
     }
 
@@ -39,6 +41,18 @@ public record EventPublishedKafkaMessage(
             UUID sectionId,
             String sectionName,
             Integer sortOrder,
+            Integer priceCents,
+            String currency
+    ) {
+    }
+
+    public record SeatInventory(
+            UUID eventSeatId,
+            UUID venueSeatId,
+            UUID sectionId,
+            String seatCode,
+            String rowLabel,
+            Integer seatNumber,
             Integer priceCents,
             String currency
     ) {

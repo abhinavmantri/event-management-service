@@ -113,6 +113,26 @@ Constraint:
 
 ---
 
+### EventSeat
+Represents a seat instance for a specific event, initialized from venue seats.
+
+Fields:
+- `id`
+- `eventId`
+- `venueSeatId`
+- `sectionId`
+- `priceCents`
+- `currency`
+- `status`
+- `version`
+- `createdAt`
+- `updatedAt`
+
+Constraint:
+- unique by `(eventId, venueSeatId)`
+
+---
+
 ### Event
 Represents a scheduled program at a venue.
 

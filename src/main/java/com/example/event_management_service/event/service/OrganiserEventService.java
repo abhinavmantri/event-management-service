@@ -115,11 +115,10 @@ public class OrganiserEventService {
     }
 
     @Transactional
-    public Event updateEvent(UUID eventId, UpdateEventRequest request, Map<String, Object> claims) throws EventNotFoundException {
+    public Event updateEvent(UUID eventId, UpdateEventRequest request) throws EventNotFoundException {
         String requestId = requestId();
         log.info("{} request: requestId={}, eventId={}", LOG_GROUP_UPDATE, requestId, eventId);
-        UUID organiserId = UUID.fromString(getRequiredClaimAsText(claims, "id"));
-        Event event = eventRepository.findByIdAndOrganiserId(eventId, organiserId)
+        Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EventNotFoundException("Event not found"));
 
         if (request.getTitle() != null) {
@@ -154,11 +153,10 @@ public class OrganiserEventService {
     }
 
     @Transactional
-    public Event publishEvent(UUID eventId, Map<String, Object> claims) throws EventNotFoundException, InvalidEventStateException {
+    public Event publishEvent(UUID eventId) throws EventNotFoundException, InvalidEventStateException {
         String requestId = requestId();
         log.info("{} request: requestId={}, eventId={}", LOG_GROUP_PUBLISH, requestId, eventId);
-        UUID organiserId = UUID.fromString(getRequiredClaimAsText(claims, "id"));
-        Event event = eventRepository.findByIdAndOrganiserId(eventId, organiserId)
+        Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EventNotFoundException("Event not found"));
 
         if (event.getStatus() != EventStatus.DRAFT) {
@@ -171,22 +169,26 @@ public class OrganiserEventService {
             log.warn("{} failure: requestId={}, eventId={}, reason=missing pricing", LOG_GROUP_PUBLISH, requestId, eventId);
             throw new InvalidEventStateException("Configure event pricing before publishing event");
         }
+        List<EventSeat> eventSeats = eventSeatRepository.findByEvent_Id(eventId);
+        if (eventSeats.isEmpty()) {
+            log.warn("{} failure: requestId={}, eventId={}, reason=missing inventory", LOG_GROUP_PUBLISH, requestId, eventId);
+            throw new InvalidEventStateException("Initialize event inventory before publishing event");
+        }
 
         Instant publishedAt = Instant.now();
         event.setStatus(EventStatus.PUBLISHED);
         event.setUpdatedAt(publishedAt);
         Event savedEvent = eventRepository.save(event);
-        applicationEventPublisher.publishEvent(buildEventPublishedDomainEvent(savedEvent, pricingList, publishedAt));
+        applicationEventPublisher.publishEvent(buildEventPublishedDomainEvent(savedEvent, pricingList, eventSeats, publishedAt));
         log.info("{} success: requestId={}, eventId={}", LOG_GROUP_PUBLISH, requestId, eventId);
         return savedEvent;
     }
 
     @Transactional
-    public long initializeEventInventory(UUID eventId, Map<String, Object> claims) throws EventNotFoundException, InvalidEventStateException {
+    public long initializeEventInventory(UUID eventId) throws EventNotFoundException, InvalidEventStateException {
         String requestId = requestId();
         log.info("{} request: requestId={}, eventId={}", LOG_GROUP_INVENTORY, requestId, eventId);
-        UUID organiserId = UUID.fromString(getRequiredClaimAsText(claims, "id"));
-        Event event = eventRepository.findByIdAndOrganiserId(eventId, organiserId)
+        Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EventNotFoundException("Event not found"));
 
         if (event.getStatus() != EventStatus.DRAFT) {
@@ -243,13 +245,12 @@ public class OrganiserEventService {
     }
 
     @Transactional
-    public List<EventSectionPricing> configureEventPricing(UUID eventId, EventPricingRequest request, Map<String, Object> claims)
+    public List<EventSectionPricing> configureEventPricing(UUID eventId, EventPricingRequest request)
             throws EventNotFoundException, InvalidEventStateException {
         String requestId = requestId();
         int priceItemsCount = request.getPrices() == null ? 0 : request.getPrices().size();
         log.info("{} request: requestId={}, eventId={}, currency={}, priceItemsCount={}", LOG_GROUP_PRICING, requestId, eventId, request.getCurrency(), priceItemsCount);
-        UUID organiserId = UUID.fromString(getRequiredClaimAsText(claims, "id"));
-        Event event = eventRepository.findByIdAndOrganiserId(eventId, organiserId)
+        Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new EventNotFoundException("Event not found"));
 
         if (event.getStatus() != EventStatus.DRAFT) {
@@ -362,6 +363,7 @@ public class OrganiserEventService {
     private EventPublishedDomainEvent buildEventPublishedDomainEvent(
             Event event,
             List<EventSectionPricing> pricingList,
+            List<EventSeat> eventSeats,
             Instant publishedAt
     ) {
         List<EventPublishedKafkaMessage.SectionPrice> sectionPrices = pricingList.stream()
@@ -371,6 +373,18 @@ public class OrganiserEventService {
                         pricing.getSection().getSortOrder(),
                         pricing.getPriceCents(),
                         pricing.getCurrency()
+                ))
+                .toList();
+        List<EventPublishedKafkaMessage.SeatInventory> seats = eventSeats.stream()
+                .map(eventSeat -> new EventPublishedKafkaMessage.SeatInventory(
+                        eventSeat.getId(),
+                        eventSeat.getVenueSeat().getId(),
+                        eventSeat.getSection().getId(),
+                        eventSeat.getVenueSeat().getSeatCode(),
+                        eventSeat.getVenueSeat().getRowLabel(),
+                        eventSeat.getVenueSeat().getSeatNumber(),
+                        eventSeat.getPriceCents(),
+                        eventSeat.getCurrency()
                 ))
                 .toList();
 
@@ -384,7 +398,8 @@ public class OrganiserEventService {
                 event.getStartsAt(),
                 event.getEndsAt(),
                 publishedAt,
-                sectionPrices
+                sectionPrices,
+                seats
         );
     }
 }

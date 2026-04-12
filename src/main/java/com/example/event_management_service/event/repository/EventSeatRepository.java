@@ -7,4 +7,5 @@ import java.util.UUID;
 
 public interface EventSeatRepository extends JpaRepository<EventSeat, UUID> {
     long countByEvent_Id(UUID eventId);
+    java.util.List<EventSeat> findByEvent_Id(UUID eventId);
 }

@@ -427,6 +427,7 @@ POST /organiser/events/{eventId}/publish
 - event must belong to the authenticated organiser
 - event status must be `DRAFT`
 - pricing must already be configured
+- inventory must already be initialized
 
 ## Response
 ```json
