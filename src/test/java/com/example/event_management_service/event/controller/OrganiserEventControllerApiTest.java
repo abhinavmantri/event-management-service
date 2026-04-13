@@ -83,7 +83,7 @@ class OrganiserEventControllerApiTest {
         Event savedEvent = new Event();
         savedEvent.setId(eventId);
         savedEvent.setTitle("Rock Night");
-        when(organiserEventService.createEvent(any(), any())).thenReturn(savedEvent);
+        when(organiserEventService.createEvent(any(), any(), any())).thenReturn(savedEvent);
 
         mockMvc.perform(post("/organiser/events")
                         .header("Authorization", "Bearer token-org")

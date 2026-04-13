@@ -29,7 +29,6 @@ import org.springframework.context.ApplicationEventPublisher;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -43,7 +42,6 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class OrganiserEventServiceTest {
-
     @Mock
     private EventRepository eventRepository;
 
@@ -82,11 +80,6 @@ class OrganiserEventServiceTest {
         request.setStartsAt(startsAt);
         request.setEndsAt(startsAt.plusSeconds(7200));
 
-        Map<String, Object> claims = Map.of(
-                "id", organiserId.toString(),
-                "email", " organiser@example.com "
-        );
-
         Venue venueRef = new Venue();
         when(entityManager.getReference(Venue.class, venueId)).thenReturn(venueRef);
         when(eventRepository.existsByOrganiserIdAndVenue_IdAndTitleIgnoreCaseAndStartsAt(
@@ -98,7 +91,7 @@ class OrganiserEventServiceTest {
             return event;
         });
 
-        Event saved = organiserEventService.createEvent(request, claims);
+        Event saved = organiserEventService.createEvent(request, organiserId, " organiser@example.com ");
 
         ArgumentCaptor<Event> captor = ArgumentCaptor.forClass(Event.class);
         verify(eventRepository).save(captor.capture());
@@ -125,18 +118,13 @@ class OrganiserEventServiceTest {
         request.setTitle("Rock Night");
         request.setStartsAt(startsAt);
 
-        Map<String, Object> claims = Map.of(
-                "id", organiserId.toString(),
-                "email", "organiser@example.com"
-        );
-
         when(eventRepository.existsByOrganiserIdAndVenue_IdAndTitleIgnoreCaseAndStartsAt(
                 organiserId, venueId, "Rock Night", startsAt
         )).thenReturn(true);
 
         EventExistsException exception = assertThrows(
                 EventExistsException.class,
-                () -> organiserEventService.createEvent(request, claims)
+                () -> organiserEventService.createEvent(request, organiserId, "organiser@example.com")
         );
 
         assertEquals("Event already exists for this organiser, venue, title and start time", exception.getMessage());
@@ -145,19 +133,22 @@ class OrganiserEventServiceTest {
     @Test
     void updateEventThrowsWhenEndBeforeStart() {
         UUID eventId = UUID.randomUUID();
+        UUID organiserId = UUID.randomUUID();
         Instant start = Instant.now().plusSeconds(3600);
         Event event = new Event();
+        event.setId(eventId);
+        event.setOrganiserId(organiserId);
         event.setStartsAt(start);
         event.setStatus(EventStatus.DRAFT);
 
         UpdateEventRequest request = new UpdateEventRequest();
         request.setEndsAt(start.minusSeconds(60));
 
-        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventRepository.findByIdAndOrganiserId(eventId, organiserId)).thenReturn(Optional.of(event));
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> organiserEventService.updateEvent(eventId, request)
+                () -> organiserEventService.updateEvent(eventId, request, organiserId)
         );
 
         assertEquals("endsAt must be greater than or equal to startsAt", exception.getMessage());
@@ -166,14 +157,17 @@ class OrganiserEventServiceTest {
     @Test
     void publishEventThrowsWhenNotDraft() {
         UUID eventId = UUID.randomUUID();
+        UUID organiserId = UUID.randomUUID();
         Event event = new Event();
+        event.setId(eventId);
+        event.setOrganiserId(organiserId);
         event.setStatus(EventStatus.PUBLISHED);
 
-        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventRepository.findByIdAndOrganiserId(eventId, organiserId)).thenReturn(Optional.of(event));
 
         InvalidEventStateException exception = assertThrows(
                 InvalidEventStateException.class,
-                () -> organiserEventService.publishEvent(eventId)
+                () -> organiserEventService.publishEvent(eventId, organiserId)
         );
 
         assertEquals("Only draft events can be published", exception.getMessage());
@@ -182,15 +176,18 @@ class OrganiserEventServiceTest {
     @Test
     void publishEventThrowsWhenPricingMissing() {
         UUID eventId = UUID.randomUUID();
+        UUID organiserId = UUID.randomUUID();
         Event event = new Event();
+        event.setId(eventId);
+        event.setOrganiserId(organiserId);
         event.setStatus(EventStatus.DRAFT);
 
-        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventRepository.findByIdAndOrganiserId(eventId, organiserId)).thenReturn(Optional.of(event));
         when(eventSectionPricingRepository.findByEvent_Id(eventId)).thenReturn(List.of());
 
         InvalidEventStateException exception = assertThrows(
                 InvalidEventStateException.class,
-                () -> organiserEventService.publishEvent(eventId)
+                () -> organiserEventService.publishEvent(eventId, organiserId)
         );
 
         assertEquals("Configure event pricing before publishing event", exception.getMessage());
@@ -200,7 +197,10 @@ class OrganiserEventServiceTest {
     @Test
     void publishEventThrowsWhenInventoryMissing() {
         UUID eventId = UUID.randomUUID();
+        UUID organiserId = UUID.randomUUID();
         Event event = new Event();
+        event.setId(eventId);
+        event.setOrganiserId(organiserId);
         event.setStatus(EventStatus.DRAFT);
 
         VenueSection section = new VenueSection();
@@ -214,13 +214,13 @@ class OrganiserEventServiceTest {
                 .currency("INR")
                 .build();
 
-        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventRepository.findByIdAndOrganiserId(eventId, organiserId)).thenReturn(Optional.of(event));
         when(eventSectionPricingRepository.findByEvent_Id(eventId)).thenReturn(List.of(pricing));
         when(eventSeatRepository.findByEvent_Id(eventId)).thenReturn(List.of());
 
         InvalidEventStateException exception = assertThrows(
                 InvalidEventStateException.class,
-                () -> organiserEventService.publishEvent(eventId)
+                () -> organiserEventService.publishEvent(eventId, organiserId)
         );
 
         assertEquals("Initialize event inventory before publishing event", exception.getMessage());
@@ -281,12 +281,12 @@ class OrganiserEventServiceTest {
                 .build();
         eventSeat.setId(UUID.randomUUID());
 
-        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventRepository.findByIdAndOrganiserId(eventId, organiserId)).thenReturn(Optional.of(event));
         when(eventSectionPricingRepository.findByEvent_Id(eventId)).thenReturn(List.of(pricing));
         when(eventSeatRepository.findByEvent_Id(eventId)).thenReturn(List.of(eventSeat));
         when(eventRepository.save(any(Event.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        Event saved = organiserEventService.publishEvent(eventId);
+        Event saved = organiserEventService.publishEvent(eventId, organiserId);
 
         assertSame(event, saved);
         assertEquals(EventStatus.PUBLISHED, saved.getStatus());
@@ -310,13 +310,16 @@ class OrganiserEventServiceTest {
     @Test
     void initializeInventoryReturnsZeroWhenAlreadyInitialized() throws Exception {
         UUID eventId = UUID.randomUUID();
+        UUID organiserId = UUID.randomUUID();
         Event event = new Event();
+        event.setId(eventId);
+        event.setOrganiserId(organiserId);
         event.setStatus(EventStatus.DRAFT);
 
-        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventRepository.findByIdAndOrganiserId(eventId, organiserId)).thenReturn(Optional.of(event));
         when(eventSeatRepository.countByEvent_Id(eventId)).thenReturn(5L);
 
-        long result = organiserEventService.initializeEventInventory(eventId);
+        long result = organiserEventService.initializeEventInventory(eventId, organiserId);
 
         assertEquals(0L, result);
     }
@@ -324,10 +327,13 @@ class OrganiserEventServiceTest {
     @Test
     void configurePricingThrowsOnDuplicateSectionIds() {
         UUID eventId = UUID.randomUUID();
+        UUID organiserId = UUID.randomUUID();
         UUID venueId = UUID.randomUUID();
         UUID sectionId = UUID.randomUUID();
 
         Event event = new Event();
+        event.setId(eventId);
+        event.setOrganiserId(organiserId);
         event.setStatus(EventStatus.DRAFT);
         Venue venue = new Venue();
         venue.setId(venueId);
@@ -348,12 +354,12 @@ class OrganiserEventServiceTest {
         request.setCurrency("inr");
         request.setPrices(List.of(p1, p2));
 
-        when(eventRepository.findById(eventId)).thenReturn(Optional.of(event));
+        when(eventRepository.findByIdAndOrganiserId(eventId, organiserId)).thenReturn(Optional.of(event));
         when(venueSectionRepository.findByVenue_Id(venueId)).thenReturn(List.of(section));
 
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
-                () -> organiserEventService.configureEventPricing(eventId, request)
+                () -> organiserEventService.configureEventPricing(eventId, request, organiserId)
         );
 
         assertEquals("Duplicate sectionId(s) in prices payload", exception.getMessage());

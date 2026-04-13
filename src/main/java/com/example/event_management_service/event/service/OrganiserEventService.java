@@ -75,17 +75,14 @@ public class OrganiserEventService {
     }
 
     @Transactional
-    public Event createEvent(CreateEventRequest request, Map<String, Object> claims) throws EventExistsException {
+    public Event createEvent(CreateEventRequest request, UUID organiserId, String organiserEmail) throws EventExistsException {
         String requestId = requestId();
         log.info("{} request: requestId={}, venueId={}, title={}, startsAt={}", LOG_GROUP_CREATE, requestId, request.getVenueId(), request.getTitle(), request.getStartsAt());
         Instant now = Instant.now();
-        String organiserId = getRequiredClaimAsText(claims, "id");
-        String organiserEmail = getRequiredClaimAsText(claims, "email");
-        UUID organiserUuid = UUID.fromString(organiserId);
         String normalizedTitle = request.getTitle().trim();
 
         boolean exists = eventRepository.existsByOrganiserIdAndVenue_IdAndTitleIgnoreCaseAndStartsAt(
-            organiserUuid,
+            organiserId,
             request.getVenueId(),
             normalizedTitle,
             request.getStartsAt()
@@ -96,7 +93,7 @@ public class OrganiserEventService {
         }
 
         Event event = Event.builder()
-                .organiserId(organiserUuid)
+                .organiserId(organiserId)
                 .organiserEmail(normalizeOptionalText(organiserEmail))
                 .venue(entityManager.getReference(Venue.class, request.getVenueId()))
                 .title(normalizedTitle)
@@ -115,11 +112,10 @@ public class OrganiserEventService {
     }
 
     @Transactional
-    public Event updateEvent(UUID eventId, UpdateEventRequest request) throws EventNotFoundException {
+    public Event updateEvent(UUID eventId, UpdateEventRequest request, UUID organiserId) throws EventNotFoundException {
         String requestId = requestId();
-        log.info("{} request: requestId={}, eventId={}", LOG_GROUP_UPDATE, requestId, eventId);
-        Event event = eventRepository.findById(eventId)
-                .orElseThrow(() -> new EventNotFoundException("Event not found"));
+        log.info("{} request: requestId={}, eventId={}, scopedToOrganiser=true", LOG_GROUP_UPDATE, requestId, eventId);
+        Event event = findOwnedEvent(eventId, organiserId);
 
         if (request.getTitle() != null) {
             event.setTitle(request.getTitle().trim());
@@ -153,11 +149,10 @@ public class OrganiserEventService {
     }
 
     @Transactional
-    public Event publishEvent(UUID eventId) throws EventNotFoundException, InvalidEventStateException {
+    public Event publishEvent(UUID eventId, UUID organiserId) throws EventNotFoundException, InvalidEventStateException {
         String requestId = requestId();
-        log.info("{} request: requestId={}, eventId={}", LOG_GROUP_PUBLISH, requestId, eventId);
-        Event event = eventRepository.findById(eventId)
-                .orElseThrow(() -> new EventNotFoundException("Event not found"));
+        log.info("{} request: requestId={}, eventId={}, scopedToOrganiser=true", LOG_GROUP_PUBLISH, requestId, eventId);
+        Event event = findOwnedEvent(eventId, organiserId);
 
         if (event.getStatus() != EventStatus.DRAFT) {
             log.warn("{} failure: requestId={}, eventId={}, status={}", LOG_GROUP_PUBLISH, requestId, eventId, event.getStatus());
@@ -185,11 +180,10 @@ public class OrganiserEventService {
     }
 
     @Transactional
-    public long initializeEventInventory(UUID eventId) throws EventNotFoundException, InvalidEventStateException {
+    public long initializeEventInventory(UUID eventId, UUID organiserId) throws EventNotFoundException, InvalidEventStateException {
         String requestId = requestId();
-        log.info("{} request: requestId={}, eventId={}", LOG_GROUP_INVENTORY, requestId, eventId);
-        Event event = eventRepository.findById(eventId)
-                .orElseThrow(() -> new EventNotFoundException("Event not found"));
+        log.info("{} request: requestId={}, eventId={}, scopedToOrganiser=true", LOG_GROUP_INVENTORY, requestId, eventId);
+        Event event = findOwnedEvent(eventId, organiserId);
 
         if (event.getStatus() != EventStatus.DRAFT) {
             log.warn("{} failure: requestId={}, eventId={}, status={}", LOG_GROUP_INVENTORY, requestId, eventId, event.getStatus());
@@ -245,13 +239,12 @@ public class OrganiserEventService {
     }
 
     @Transactional
-    public List<EventSectionPricing> configureEventPricing(UUID eventId, EventPricingRequest request)
+    public List<EventSectionPricing> configureEventPricing(UUID eventId, EventPricingRequest request, UUID organiserId)
             throws EventNotFoundException, InvalidEventStateException {
         String requestId = requestId();
         int priceItemsCount = request.getPrices() == null ? 0 : request.getPrices().size();
-        log.info("{} request: requestId={}, eventId={}, currency={}, priceItemsCount={}", LOG_GROUP_PRICING, requestId, eventId, request.getCurrency(), priceItemsCount);
-        Event event = eventRepository.findById(eventId)
-                .orElseThrow(() -> new EventNotFoundException("Event not found"));
+        log.info("{} request: requestId={}, eventId={}, currency={}, priceItemsCount={}, scopedToOrganiser=true", LOG_GROUP_PRICING, requestId, eventId, request.getCurrency(), priceItemsCount);
+        Event event = findOwnedEvent(eventId, organiserId);
 
         if (event.getStatus() != EventStatus.DRAFT) {
             log.warn("{} failure: requestId={}, eventId={}, status={}", LOG_GROUP_PRICING, requestId, eventId, event.getStatus());
@@ -317,18 +310,6 @@ public class OrganiserEventService {
         return savedPricing;
     }
 
-    private String getRequiredClaimAsText(Map<String, Object> claims, String claimName) {
-        Object claimValue = claims.get(claimName);
-        if (claimValue == null) {
-            throw new IllegalArgumentException("Missing required claim: " + claimName);
-        }
-        String claimText = claimValue.toString().trim();
-        if (claimText.isEmpty()) {
-            throw new IllegalArgumentException("Missing required claim: " + claimName);
-        }
-        return claimText;
-    }
-
     private String normalizeOptionalText(String value) {
         if (value == null) {
             return null;
@@ -358,6 +339,11 @@ public class OrganiserEventService {
     private String requestId() {
         String requestId = MDC.get(REQUEST_ID_MDC_KEY);
         return requestId == null ? "N/A" : requestId;
+    }
+
+    private Event findOwnedEvent(UUID eventId, UUID organiserId) throws EventNotFoundException {
+        return eventRepository.findByIdAndOrganiserId(eventId, organiserId)
+                .orElseThrow(() -> new EventNotFoundException("Event not found"));
     }
 
     private EventPublishedDomainEvent buildEventPublishedDomainEvent(

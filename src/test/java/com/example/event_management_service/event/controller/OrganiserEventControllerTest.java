@@ -50,18 +50,19 @@ class OrganiserEventControllerTest {
         request.setStartsAt(Instant.now().plusSeconds(3600));
 
         Map<String, Object> claims = Map.of("id", UUID.randomUUID().toString(), "email", "org@example.com");
+        UUID organiserId = UUID.fromString(claims.get("id").toString());
         Event savedEvent = new Event();
         savedEvent.setId(eventId);
         savedEvent.setTitle("Rock Night");
 
-        when(organiserEventService.createEvent(request, claims)).thenReturn(savedEvent);
+        when(organiserEventService.createEvent(request, organiserId, "org@example.com")).thenReturn(savedEvent);
 
         ResponseEntity<?> response = organiserEventController.createEvent(request, claims);
 
         assertEquals(HttpStatus.CREATED, response.getStatusCode());
         assertEquals(ResponseStatus.SUCCESS, ((CreateEventResponse) response.getBody()).getResponseStatus());
         assertSame(savedEvent, ((CreateEventResponse) response.getBody()).getEvent());
-        verify(organiserEventService).createEvent(request, claims);
+        verify(organiserEventService).createEvent(request, organiserId, "org@example.com");
     }
 
     @Test
@@ -70,8 +71,9 @@ class OrganiserEventControllerTest {
         UpdateEventRequest request = new UpdateEventRequest();
         request.setTitle("Updated");
         Map<String, Object> claims = Map.of("id", UUID.randomUUID().toString(), "email", "org@example.com");
+        UUID organiserId = UUID.fromString(claims.get("id").toString());
 
-        when(organiserEventService.updateEvent(eventId, request, claims)).thenThrow(new EventNotFoundException("Event not found"));
+        when(organiserEventService.updateEvent(eventId, request, organiserId)).thenThrow(new EventNotFoundException("Event not found"));
 
         ResponseEntity<?> response = organiserEventController.updateEvent(eventId, request, claims);
 
@@ -84,6 +86,7 @@ class OrganiserEventControllerTest {
     void configureEventPricingBadRequestOnInvalidState() {
         UUID eventId = UUID.randomUUID();
         Map<String, Object> claims = Map.of("id", UUID.randomUUID().toString(), "email", "org@example.com");
+        UUID organiserId = UUID.fromString(claims.get("id").toString());
         EventPricingRequest request = new EventPricingRequest();
         request.setCurrency("INR");
         EventPricingRequest.PriceItem priceItem = new EventPricingRequest.PriceItem();
@@ -91,7 +94,7 @@ class OrganiserEventControllerTest {
         priceItem.setPriceCents(5000);
         request.setPrices(List.of(priceItem));
 
-        when(organiserEventService.configureEventPricing(eventId, request, claims))
+        when(organiserEventService.configureEventPricing(eventId, request, organiserId))
                 .thenThrow(new InvalidEventStateException("Pricing can be configured only for draft events"));
 
         ResponseEntity<?> response = organiserEventController.configureEventPricing(eventId, request, claims);
@@ -104,7 +107,8 @@ class OrganiserEventControllerTest {
     void initializeInventorySuccessMarksAlreadyInitializedWhenZeroSeatsCreated() {
         UUID eventId = UUID.randomUUID();
         Map<String, Object> claims = Map.of("id", UUID.randomUUID().toString(), "email", "org@example.com");
-        when(organiserEventService.initializeEventInventory(eventId, claims)).thenReturn(0L);
+        UUID organiserId = UUID.fromString(claims.get("id").toString());
+        when(organiserEventService.initializeEventInventory(eventId, organiserId)).thenReturn(0L);
 
         ResponseEntity<EventSeatInventory> response = organiserEventController.initializeEventInventory(eventId, claims);
 

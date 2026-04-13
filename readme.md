@@ -10,7 +10,7 @@ It owns:
 - events
 - event pricing
 - event seat inventory
-- public event browse/search APIs
+- public event browse/detail APIs
 
 It does **not** own:
 - user identities
@@ -184,10 +184,15 @@ All routes below are served under the application context path:
 
 `/event-management-service/v1`
 
+Current public event controllers additionally use the `/api/v1/events` route segment, so the full public event URLs are:
+
+- `/event-management-service/v1/api/v1/events`
+- `/event-management-service/v1/api/v1/events/{eventId}`
+
 ## Browse Events
 Returns paginated published events for customers.
 
-`GET /events`
+`GET /api/v1/events`
 
 ### Supported filters
 - `query`
@@ -201,6 +206,8 @@ Returns paginated published events for customers.
 
 ### Notes
 - only `PUBLISHED` events are visible publicly
+- only upcoming events with `startsAt >= now` are returned
+- results are ordered by `startsAt ASC`
 - browse path should be read-optimized
 - Redis caching can be used for event detail and search response caching
 
@@ -209,7 +216,10 @@ Returns paginated published events for customers.
 ## Get Event Detail
 Returns event details for a single published event.
 
-`GET /events/{eventId}`
+`GET /api/v1/events/{eventId}`
+
+### Notes
+- current controller returns HTTP `200` with `responseStatus=FAILURE` when the published event is not found
 
 ---
 
@@ -257,6 +267,7 @@ Creates an event in `DRAFT` state.
 
 ### Notes
 - `organiserId` is derived from JWT
+- `organiserEmail` is derived from JWT
 - organiser information is not accepted from request body
 
 ---
@@ -267,7 +278,7 @@ Updates an existing event.
 `PATCH /organiser/events/{eventId}`
 
 ### Rules
-- current implementation validates organiser ownership by JWT claim
+- current implementation validates organiser ownership by JWT claim and scopes lookups by `eventId + organiserId`
 - current implementation allows updates regardless of status
 - request validation still enforces valid date ordering
 
@@ -301,6 +312,7 @@ Creates local `event_seats` from venue seats for the event.
 ### Notes
 - this service stores `event_seats`
 - this endpoint is synchronous because inventory creation is correctness-critical
+- if inventory already exists, the current implementation returns success with `createdSeats = 0`
 
 ---
 
@@ -311,7 +323,7 @@ Publishes event for customer visibility.
 
 ### Rules
 - current implementation requires pricing before publish
-- pricing must already exist
+- inventory initialization is not currently required before publish
 - only the owning organiser can publish
 
 ---
@@ -404,9 +416,9 @@ PATCH /event-management-service/v1/organiser/events/{eventId}
 
 POST /event-management-service/v1/organiser/events/{eventId}/publish
 
-GET /event-management-service/v1/events (public browse)
+GET /event-management-service/v1/api/v1/events (public browse)
 
-GET /event-management-service/v1/events/{eventId}
+GET /event-management-service/v1/api/v1/events/{eventId}
 
 Event pricing & inventory init
 

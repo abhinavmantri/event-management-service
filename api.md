@@ -35,16 +35,27 @@ http://localhost:8081/event-management-service/v1
 /event-management-service/v1
 ```
 
-Example:
+Current controller route groups:
 ```text
-http://localhost:8081/event-management-service/v1/events
+/venues
+/venues/{venueId}/sections
+/organiser/events
+/api/v1/events
+```
+
+Examples:
+```text
+http://localhost:8081/event-management-service/v1/venues
+http://localhost:8081/event-management-service/v1/organiser/events
+http://localhost:8081/event-management-service/v1/api/v1/events
 ```
 
 ---
 
 # Authentication
 
-All external APIs require JWT authentication.
+Organizer and venue management APIs require JWT authentication.
+Public event browse/detail APIs do not currently require JWT.
 
 ## Headers
 ```http
@@ -234,6 +245,10 @@ GET /events/{eventId}
 }
 ```
 
+## Current Behavior Notes
+- only `PUBLISHED` events are returned
+- current controller returns HTTP `200` with `responseStatus=FAILURE` when the event is not found
+
 ---
 
 # 3. List Events
@@ -288,6 +303,12 @@ GET /events?query=coldplay&city=Bangalore&category=MUSIC&page=0&size=10
 }
 ```
 
+## Current Behavior Notes
+- only `PUBLISHED` events with `startsAt >= now` are returned
+- filtering supports `query`, `city`, `category`, `startDate`, `endDate`
+- results are ordered by `startsAt ASC`
+- current controller returns HTTP `200` with `responseStatus=FAILURE` if the search flow throws an exception
+
 ---
 
 # 4. Update Event
@@ -303,7 +324,7 @@ PATCH /organiser/events/{eventId}
 - owning `ORGANISER`
 
 ## Rules
-- current implementation validates organiser ownership by JWT claim
+- current implementation validates organiser ownership by JWT claim and scopes the lookup by `eventId + organiserId`
 - current implementation does not restrict updates by event status
 - `endsAt` must not be before `startsAt`
 
@@ -427,7 +448,7 @@ POST /organiser/events/{eventId}/publish
 - event must belong to the authenticated organiser
 - event status must be `DRAFT`
 - pricing must already be configured
-- inventory must already be initialized
+- inventory initialization is not currently required before publish
 
 ## Response
 ```json
@@ -437,6 +458,9 @@ POST /organiser/events/{eventId}/publish
   "eventId": "f5cf6f1c-0bd0-4cb8-bf75-9e5645f914d6"
 }
 ```
+
+## Current Behavior Notes
+- if the event belongs to a different organiser, current implementation returns `404 Event not found`
 
 ---
 
@@ -463,6 +487,12 @@ No request body.
   "alreadyInitialized": false
 }
 ```
+
+## Current Behavior Notes
+- event must belong to the authenticated organiser
+- event status must be `DRAFT`
+- pricing must already be configured before inventory initialization
+- if inventory already exists, response remains `200` with `createdSeats: 0` and `alreadyInitialized: true`
 
 ---
 
@@ -1025,8 +1055,8 @@ Consumers may include:
 
 | Method | Endpoint | Description |
 |-------|----------|-------------|
-| GET | `/events` | Browse public events |
-| GET | `/events/{eventId}` | Get event details |
+| GET | `/api/v1/events` | Browse public events |
+| GET | `/api/v1/events/{eventId}` | Get event details |
 | POST | `/organiser/events` | Create event |
 | PATCH | `/organiser/events/{eventId}` | Update event |
 | POST | `/organiser/events/{eventId}/publish` | Publish event |
