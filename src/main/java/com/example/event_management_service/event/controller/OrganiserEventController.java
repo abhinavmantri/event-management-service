@@ -210,7 +210,7 @@ public class OrganiserEventController {
     }
 
     private UUID requireOrganiserId(Map<String, Object> claims) {
-        return UUID.fromString(requireClaimAsText(claims, "id"));
+        return UUID.fromString(requireFirstClaimAsText(claims, "id", "userId", "sub"));
     }
 
     private String requireClaimAsText(Map<String, Object> claims, String claimName) {
@@ -223,6 +223,16 @@ public class OrganiserEventController {
             throw new IllegalArgumentException("Missing required claim: " + claimName);
         }
         return claimText;
+    }
+
+    private String requireFirstClaimAsText(Map<String, Object> claims, String... claimNames) {
+        for (String claimName : claimNames) {
+            Object claimValue = claims.get(claimName);
+            if (claimValue != null && !claimValue.toString().trim().isEmpty()) {
+                return claimValue.toString().trim();
+            }
+        }
+        throw new IllegalArgumentException("Missing required claim: " + String.join(" or ", claimNames));
     }
 
     private long elapsedMillis(long startNanos) {

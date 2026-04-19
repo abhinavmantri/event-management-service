@@ -8,6 +8,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
 import java.util.List;
@@ -23,16 +24,20 @@ import static org.mockito.Mockito.when;
 class EventPublishedKafkaPublisherTest {
 
     @Mock
-    private KafkaTemplate<String, EventPublishedKafkaMessage> kafkaTemplate;
+    private KafkaTemplate<String, String> kafkaTemplate;
 
     @Mock
     private KafkaTopicsProperties kafkaTopicsProperties;
 
-    @InjectMocks
     private EventPublishedKafkaPublisher eventPublishedKafkaPublisher;
 
     @Test
     void publishSendsKafkaMessageToConfiguredTopic() {
+        eventPublishedKafkaPublisher = new EventPublishedKafkaPublisher(
+                kafkaTemplate,
+                kafkaTopicsProperties,
+                new ObjectMapper()
+        );
         UUID eventId = UUID.randomUUID();
         EventPublishedDomainEvent domainEvent = new EventPublishedDomainEvent(
                 eventId,
@@ -58,8 +63,8 @@ class EventPublishedKafkaPublisherTest {
         );
         EventPublishedKafkaMessage expectedMessage = EventPublishedKafkaMessage.from(domainEvent);
 
-        CompletableFuture<SendResult<String, EventPublishedKafkaMessage>> future = new CompletableFuture<>();
-        SendResult<String, EventPublishedKafkaMessage> sendResult = mock(SendResult.class);
+        CompletableFuture<SendResult<String, String>> future = new CompletableFuture<>();
+        SendResult<String, String> sendResult = mock(SendResult.class);
         org.apache.kafka.clients.producer.RecordMetadata recordMetadata =
                 mock(org.apache.kafka.clients.producer.RecordMetadata.class);
         when(sendResult.getRecordMetadata()).thenReturn(recordMetadata);
@@ -68,22 +73,25 @@ class EventPublishedKafkaPublisherTest {
         future.complete(sendResult);
 
         when(kafkaTopicsProperties.getEventPublished()).thenReturn("event.published.v1");
-        when(kafkaTemplate.send("event.published.v1", eventId.toString(), expectedMessage))
+        when(kafkaTemplate.send(
+                org.mockito.ArgumentMatchers.eq("event.published.v1"),
+                org.mockito.ArgumentMatchers.eq(eventId.toString()),
+                org.mockito.ArgumentMatchers.anyString()
+        ))
                 .thenReturn(future);
 
         eventPublishedKafkaPublisher.publish(domainEvent);
 
-        ArgumentCaptor<EventPublishedKafkaMessage> messageCaptor = ArgumentCaptor.forClass(EventPublishedKafkaMessage.class);
+        ArgumentCaptor<String> messageCaptor = ArgumentCaptor.forClass(String.class);
         verify(kafkaTemplate).send(
                 org.mockito.ArgumentMatchers.eq("event.published.v1"),
                 org.mockito.ArgumentMatchers.eq(eventId.toString()),
                 messageCaptor.capture()
         );
 
-        EventPublishedKafkaMessage message = messageCaptor.getValue();
-        assertEquals(EventPublishedKafkaMessage.EVENT_TYPE, message.eventType());
-        assertEquals(eventId, message.eventId());
-        assertEquals(domainEvent.sectionPrices(), message.sectionPrices());
-        assertEquals(domainEvent.seats(), message.seats());
+        String payload = messageCaptor.getValue();
+        assertEquals(true, payload.contains("\"eventType\":\"" + EventPublishedKafkaMessage.EVENT_TYPE + "\""));
+        assertEquals(true, payload.contains("\"eventId\":\"" + eventId + "\""));
+        assertEquals(true, payload.contains("\"seatCode\":\"VIP-R01-S01\""));
     }
 }

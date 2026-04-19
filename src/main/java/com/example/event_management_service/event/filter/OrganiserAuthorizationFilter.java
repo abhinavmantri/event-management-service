@@ -31,7 +31,7 @@ public class OrganiserAuthorizationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !request.getRequestURI().startsWith(ORGANISER_API_PREFIX);
+        return !request.getServletPath().startsWith(ORGANISER_API_PREFIX);
     }
 
     @Override
@@ -54,7 +54,8 @@ public class OrganiserAuthorizationFilter extends OncePerRequestFilter {
                     : authorizationToken.trim();
             Map<String, Object> claims = jwtService.validateAndExtractClaims(jwtToken);
             String role = claims.get(ROLE_CLAIM) == null ? null : claims.get(ROLE_CLAIM).toString().trim();
-            if (!UserRole.ORGANISER.name().equalsIgnoreCase(role)) {
+            if (!UserRole.ORGANISER.name().equalsIgnoreCase(role)
+                    && !UserRole.ORGANIZER.name().equalsIgnoreCase(role)) {
                 response.setStatus(HttpStatus.FORBIDDEN.value());
                 response.setContentType(MediaType.APPLICATION_JSON_VALUE);
                 response.getWriter().write("{\"message\":\"Insufficient role for organiser endpoint\"}");
