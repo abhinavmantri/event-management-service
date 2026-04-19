@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS venues (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name        VARCHAR(200) NOT NULL,
   city        VARCHAR(120) NOT NULL,
-  address     TEXT,
+  address     TEXT NOT NULL,
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS events (
 
   -- references user-service user id; no foreign key
   organiser_id   UUID NOT NULL,
+  organiser_name VARCHAR(150),
   organiser_email VARCHAR(320),    -- optional snapshot
 
   venue_id       UUID NOT NULL REFERENCES venues(id),
