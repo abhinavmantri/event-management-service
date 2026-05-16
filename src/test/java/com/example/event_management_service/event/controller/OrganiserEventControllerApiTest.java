@@ -2,6 +2,7 @@ package com.example.event_management_service.event.controller;
 
 import com.example.event_management_service.event.exceptions.EventNotFoundException;
 import com.example.event_management_service.event.exceptions.InvalidEventStateException;
+import com.example.event_management_service.event.filter.OrganiserAuthorizationFilter;
 import com.example.event_management_service.event.model.Event;
 import com.example.event_management_service.event.model.EventSectionPricing;
 import com.example.event_management_service.event.service.OrganiserEventService;
@@ -9,6 +10,7 @@ import com.example.event_management_service.shared.service.JWTService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -27,6 +29,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(OrganiserEventController.class)
+@Import(OrganiserAuthorizationFilter.class)
 class OrganiserEventControllerApiTest {
 
     @Autowired

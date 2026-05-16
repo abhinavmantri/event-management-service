@@ -31,7 +31,7 @@ public class OrganiserAuthorizationFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !request.getServletPath().startsWith(ORGANISER_API_PREFIX);
+        return !requestPath(request).startsWith(ORGANISER_API_PREFIX);
     }
 
     @Override
@@ -68,5 +68,10 @@ public class OrganiserAuthorizationFilter extends OncePerRequestFilter {
             return;
         }
         filterChain.doFilter(request, response);
+    }
+
+    private String requestPath(HttpServletRequest request) {
+        String servletPath = request.getServletPath();
+        return StringUtils.hasText(servletPath) ? servletPath : request.getRequestURI();
     }
 }
