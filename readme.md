@@ -1,54 +1,166 @@
 # Event Management Service
 
-## Overview
-`event-management-service` is responsible for managing event and venue domain data for the ticketing platform.
+Spring Boot microservice for venue setup, event lifecycle management, section-level pricing, event inventory initialization, and public event discovery in the Ticketmaster-style backend platform.
 
-It owns:
-- venues
-- venue sections
-- venue seats
-- events
-- event pricing
-- event seat inventory
-- public event browse/detail APIs
+This service is the upstream source of truth for event metadata and event seat inventory creation. It models venues and physical seats, creates event-specific seat inventory from venue layouts, and publishes inventory data to Kafka when an event becomes available for customers.
 
-It does **not** own:
-- user identities
-- seat lock state
-- booked seat state
-- payment lifecycle
-- booking/ticket fulfillment
+## Where It Fits
 
----
+```text
+organiser / admin
+      |
+      | venue, section, seat layout, event, pricing
+      v
+event-management-service
+      |
+      | publish event after inventory is initialized
+      v
+Kafka topic: inventory-init.v1
+      |
+      v
+seats-allocation-service
+      |
+      | checkout-time lock / confirm / release
+      v
+booking + payment flow
+```
 
-## Responsibilities
+Kafka interaction is intentionally narrow: this service publishes event inventory to `inventory-init.v1`, and seats-allocation-service consumes it. Checkout-time locking, payment, booking, and ticket issuance are handled by downstream services.
 
-### Owned by this service
-- create and manage venues
-- create venue sections and venue seats
-- create and manage events
-- configure section-level pricing for events
-- initialize event seat inventory from venue seats
-- publish events
-- provide public browse and event detail APIs
+## What It Does Today
 
-### Not owned by this service
-- authentication and user profile storage
-- seat locking and booking state
-- payment provider integration
-- booking and ticket generation
+- Creates venues and keeps venue names unique within a city.
+- Creates venue sections and keeps section names unique within a venue.
+- Generates physical venue seats for a section using row/seat layout input.
+- Prevents new seat generation for venues already used by published events.
+- Creates organiser-owned events in `DRAFT` state.
+- Updates organiser-owned event metadata.
+- Configures section-level event pricing while the event is still draft.
+- Initializes event-specific seat inventory from venue seats and pricing.
+- Requires pricing and initialized inventory before publishing an event.
+- Publishes an `EVENT_PUBLISHED` Kafka message after the publish transaction commits.
+- Exposes public browse/detail APIs for published upcoming events.
 
----
+## Core Components
 
-## Service Dependencies
+| Component | Responsibility |
+| --- | --- |
+| `VenueController` | Venue create, list, search, and detail APIs |
+| `VenueSectionController` | Section creation and physical seat generation |
+| `OrganiserEventController` | Organiser event create/update/pricing/inventory/publish APIs |
+| `PublicEventController` | Customer event browse and detail APIs |
+| `VenueService` | Venue ownership and uniqueness rules |
+| `VenueSectionService` | Section creation and deterministic venue seat generation |
+| `OrganiserEventService` | Event lifecycle, pricing, inventory initialization, and publish workflow |
+| `EventService` | Published event search and detail lookup |
+| `EventPublishedKafkaPublisher` | After-commit Kafka publication for event inventory |
+| `OrganiserAuthorizationFilter` | JWT role enforcement for organiser APIs |
+| `VenueAuthorizationFilter` | JWT role enforcement for venue creation |
 
-### Upstream
-- API Gateway
-- user-service (JWT issued upstream)
+## Event Lifecycle
 
-## Data Ownership
+```text
+DRAFT
+  |
+  | configure pricing
+  v
+DRAFT + pricing
+  |
+  | initialize inventory from venue seats
+  v
+DRAFT + event_seats
+  |
+  | publish
+  v
+PUBLISHED + Kafka inventory-init.v1 message
+```
 
-### This service database owns
+Current status model:
+
+- `DRAFT`
+- `PUBLISHED`
+- `CANCELLED`
+
+Publishing is allowed only from `DRAFT`. The current implementation requires both section pricing and event seat inventory before publish.
+
+## Inventory Initialization
+
+Inventory initialization creates event-specific seats from the reusable venue layout:
+
+1. Organiser creates a venue.
+2. Organiser adds venue sections.
+3. Organiser generates physical venue seats for each section.
+4. Organiser creates an event for the venue.
+5. Organiser configures section-level pricing for the event.
+6. Organiser initializes event inventory.
+7. Service creates `event_seats` with `AVAILABLE` status, price, currency, section, and venue-seat reference.
+
+If inventory already exists, the endpoint returns success with `createdSeats = 0`.
+
+## Kafka Publication
+
+When an event is published, `OrganiserEventService` publishes an internal domain event. `EventPublishedKafkaPublisher` listens after transaction commit and sends a Kafka message.
+
+Configured topic:
+
+```text
+inventory-init.v1
+```
+
+Message includes:
+
+- event id
+- venue id
+- organiser id and email snapshot
+- title and category
+- start/end time
+- published time
+- section prices
+- event seat inventory including event seat id, venue seat id, section id, seat code, row label, seat number, price, and currency
+
+This makes seats-allocation-service independent of event-management database reads during checkout.
+
+## API Surface
+
+Configured base path:
+
+```text
+/event-management-service/v1
+```
+
+Primary endpoints:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `POST /venues` | Create venue |
+| `GET /venues` | List/search venues |
+| `GET /venues/{venueId}` | Get venue detail |
+| `POST /venues/{venueId}/sections` | Add venue section |
+| `POST /venues/{venueId}/sections/{sectionId}/seats/generate` | Generate physical seats for a section |
+| `POST /organiser/events` | Create draft event |
+| `PATCH /organiser/events/{eventId}` | Update organiser-owned event |
+| `POST /organiser/events/{eventId}/pricing` | Configure section pricing |
+| `POST /organiser/events/{eventId}/inventory/init` | Create event seat inventory |
+| `POST /organiser/events/{eventId}/publish` | Publish event and emit inventory message |
+| `GET /api/v1/events` | Browse published upcoming events |
+| `GET /api/v1/events/{eventId}` | Get published event detail |
+
+Detailed examples are in [api.md](api.md).
+
+## Reliability And Consistency Choices
+
+- **Clear ownership boundary:** event-management owns event metadata and event inventory creation, not checkout locks.
+- **Publish after commit:** Kafka publication runs through `@TransactionalEventListener(phase = AFTER_COMMIT)`.
+- **Inventory required before publish:** published events cannot be exposed without generated event seats.
+- **Pricing required before inventory:** every generated event seat receives price and currency from section pricing.
+- **Venue layout protection:** seat generation is blocked once a venue is used by a published event.
+- **Organiser scoping:** organiser mutations use JWT claims and query by `eventId + organiserId`.
+- **Public browse isolation:** public APIs return only published upcoming events.
+
+## Data Model
+
+Core tables:
+
 - `venues`
 - `venue_sections`
 - `venue_seats`
@@ -56,373 +168,81 @@ It does **not** own:
 - `event_section_pricing`
 - `event_seats`
 
-### This service does not store
-- lock state
-- booking state
-- payment state
-
----
-
-## Core Domain Model
-
-### Venue
-Represents a physical place where events are held.
-
-Fields:
-- `id`
-- `name`
-- `city`
-- `address`
-- `createdAt`
-- `updatedAt`
-
-Constraint:
-- unique by `(city, name)` case-insensitively
-
----
-
-### VenueSection
-Represents a logical section inside a venue such as VIP, A, B.
-
-Fields:
-- `id`
-- `venueId`
-- `name`
-- `sortOrder`
-- `createdAt`
-
-Constraint:
-- unique by `(venueId, name)`
-
----
+Important constraints:
 
-### VenueSeat
-Represents a physical seat in a venue.
-
-Fields:
-- `id`
-- `venueId`
-- `sectionId`
-- `seatCode`
-- `rowLabel`
-- `seatNumber`
-- `createdAt`
-
-Constraint:
-- unique by `(venueId, seatCode)`
-
----
-
-### EventSeat
-Represents a seat instance for a specific event, initialized from venue seats.
-
-Fields:
-- `id`
-- `eventId`
-- `venueSeatId`
-- `sectionId`
-- `priceCents`
-- `currency`
-- `status`
-- `version`
-- `createdAt`
-- `updatedAt`
+- unique venue by lowercase city and name
+- unique section name within a venue
+- unique seat code within a venue
+- unique pricing row per event and section
+- unique event seat per event and venue seat
+- event seat status restricted to `AVAILABLE`, `LOCKED`, `BOOKED`
 
-Constraint:
-- unique by `(eventId, venueSeatId)`
+Schema: [scripts/db.sql](scripts/db.sql)
 
----
+## Authentication
 
-### Event
-Represents a scheduled program at a venue.
+Organiser APIs require JWT with organiser role:
 
-Fields:
-- `id`
-- `organiserId`
-- `organiserEmail`
-- `venue`
-- `title`
-- `description`
-- `category`
-- `startsAt`
-- `endsAt`
-- `status`
-- `createdAt`
-- `updatedAt`
+```http
+Authorization: Bearer <jwt>
+```
 
-### Event Status
-- `DRAFT`
-- `PUBLISHED`
-- `CANCELLED`
+Accepted organiser role values:
 
-Notes:
-- `organiserId` is an external reference from `user-service`
-- no foreign key to users table is maintained in this service
+- `ORGANISER`
+- `ORGANIZER`
 
----
+Venue creation requires `ADMIN`, `ORGANISER`, or `ORGANIZER`. Public browse/detail APIs are not protected by these filters.
 
-### EventSectionPricing
-Represents section-level price configuration for an event.
+## Configuration
 
-Fields:
-- `id`
-- `event`
-- `section`
-- `priceCents`
-- `currency`
+Primary settings:
 
-Notes:
-- currency is stored on each pricing row
-- prices are stored in integer minor units as `priceCents`
-- pricing is configured before inventory initialization
+| Property | Purpose |
+| --- | --- |
+| `api.prefix` | Servlet context path |
+| `spring.datasource.*` | PostgreSQL connection |
+| `security.jwt.secret` | JWT validation secret |
+| `spring.kafka.bootstrap-servers` | Kafka broker list |
+| `spring.kafka.producer.client-id` | Kafka producer client id |
+| `app.kafka.topics.event-published` | Topic used for inventory initialization |
 
----
+## Running Locally
 
-## Public APIs
+Prerequisites:
 
-All routes below are served under the application context path:
+- Java 21
+- PostgreSQL
+- Kafka for publish-flow verification
+- event schema from [scripts/db.sql](scripts/db.sql)
 
-`/event-management-service/v1`
+Run:
 
-Current public event controllers additionally use the `/api/v1/events` route segment, so the full public event URLs are:
+```powershell
+.\mvnw.cmd spring-boot:run "-Dspring-boot.run.profiles=dev"
+```
 
-- `/event-management-service/v1/api/v1/events`
-- `/event-management-service/v1/api/v1/events/{eventId}`
+Run tests:
 
-## Browse Events
-Returns paginated published events for customers.
+```powershell
+.\mvnw.cmd test
+```
 
-`GET /api/v1/events`
+## Current Limitations
 
-### Supported filters
-- `query`
-- `category`
-- `city`
-- `startDate`
-- `endDate`
-- `page`
-- `size`
-- `sort`
+- Kafka publish uses after-commit listener but not a durable outbox table yet.
+- Public event detail currently returns HTTP `200` with failure status when a published event is not found.
+- Venue seat generation checks published-event usage through repository loading rather than a dedicated indexed existence query.
+- Update event currently allows updates while draft/published state rules are not fully hardened.
+- Cancellation workflow is represented in the status model but not fully exposed as a production workflow.
+- No OpenAPI contract is generated yet.
 
-### Notes
-- only `PUBLISHED` events are visible publicly
-- only upcoming events with `startsAt >= now` are returned
-- results are ordered by `startsAt ASC`
-- browse path should be read-optimized
-- Redis caching can be used for event detail and search response caching
+## Production Hardening Roadmap
 
----
-
-## Get Event Detail
-Returns event details for a single published event.
-
-`GET /api/v1/events/{eventId}`
-
-### Notes
-- current controller returns HTTP `200` with `responseStatus=FAILURE` when the published event is not found
-
----
-
-## Venue Read APIs
-Optional public or restricted read APIs depending on product needs.
-
-`GET /venues`
-`GET /venues/{venueId}`
-
----
-
-## Organizer APIs
-
-## Create Venue
-Creates a new venue.
-
-`POST /venues`
-
----
-
-## Add Venue Section
-Creates a section under a venue.
-
-`POST /venues/{venueId}/sections`
-
----
-
-## Generate Venue Seats
-Generates venue seats for a section based on layout input.
-
-`POST /venues/{venueId}/sections/{sectionId}/seats/generate`
-
-### Business Logic
-- validates that section belongs to venue
-- generates seat rows and seat numbers
-- creates unique seat codes like `VIP-R01-S01`
-- rejects duplicate seat generation for same section in MVP
-
----
-
-## Create Event
-Creates an event in `DRAFT` state.
-
-`POST /organiser/events`
-
-### Notes
-- `organiserId` is derived from JWT
-- `organiserEmail` is derived from JWT
-- organiser information is not accepted from request body
-
----
-
-## Update Event
-Updates an existing event.
-
-`PATCH /organiser/events/{eventId}`
-
-### Rules
-- current implementation validates organiser ownership by JWT claim and scopes lookups by `eventId + organiserId`
-- current implementation allows updates regardless of status
-- request validation still enforces valid date ordering
-
----
-
-## Set Event Pricing
-Configures full section pricing for the event.
-
-`POST /organiser/events/{eventId}/pricing`
-
-### Notes
-- pricing is section-based
-- pricing is stored in integer minor units as `priceCents`
-- duplicate section ids are rejected
-- section ids must belong to the event venue
-
----
-
-## Initialize Inventory
-Creates local `event_seats` from venue seats for the event.
-
-`POST /organiser/events/{eventId}/inventory/init`
-
-### Flow
-1. validate organizer ownership
-2. validate event status is `DRAFT`
-3. validate pricing is configured
-4. load venue seats for the event venue
-5. create `event_seats` in this service database
-
-### Notes
-- this service stores `event_seats`
-- this endpoint is synchronous because inventory creation is correctness-critical
-- if inventory already exists, the current implementation returns success with `createdSeats = 0`
-
----
-
-## Publish Event
-Publishes event for customer visibility.
-
-`POST /organiser/events/{eventId}/publish`
-
-### Rules
-- current implementation requires pricing before publish
-- inventory initialization is not currently required before publish
-- only the owning organiser can publish
-
----
-
-## Inter-Service Communication
-
-### Synchronous Calls
-This service uses synchronous in-process persistence for correctness-critical paths.
-
-### Asynchronous Communication
-The current implementation publishes an `EVENT_PUBLISHED` style domain event to Kafka after publish.
-
----
-
-## Security Model
-
-### Public/Organizer APIs
-- authenticated through JWT validated at gateway/resource server layer
-- organiser ownership is enforced for organiser mutation operations
-- organiser id is taken from JWT claims
-
----
-
-## Business Rules
-
-- user data is not stored in this service database
-- `organiserId` is an external reference
-- venue names are unique within a city
-- section names are unique within a venue
-- seat codes are unique within a venue
-- prices are stored in minor units as `priceCents`
-- inventory state is stored locally in `event_seats`
-- pricing must be configured before inventory initialization
-- current implementation does not require inventory initialization before publish
-- published events are served through public browse APIs only
-
----
-
-## Status Rules
-
-### Event Lifecycle
-- `DRAFT` -> `PUBLISHED`
-- `DRAFT` -> `CANCELLED`
-- `PUBLISHED` -> `CANCELLED`
-
-### Pricing Rules
-- pricing is configured before inventory init
-- pricing is allowed only while the event is `DRAFT`
-
-### Venue Rules
-- venue seat generation is allowed before event publication
-- major venue structure changes should be restricted once active events depend on that venue
-
----
-
-## Performance / Read Path
-
-Public browse APIs are read-heavy and should be optimized for low-latency lookups.
-
-Recommended approach:
-- use PostgreSQL indexes for browse filters
-- add Redis cache for:
-  - event detail
-  - venue detail
-  - browse/search response pages
-- avoid joining seat allocation state in event browse path
-- keep inventory state out of this service
-
----
-
-Venue & Event Management
-
-Venue APIs
-
-POST /event-management-service/v1/venues
-
-GET /event-management-service/v1/venues
-
-GET /event-management-service/v1/venues/{venueId}
-
-POST /event-management-service/v1/venues/{venueId}/sections
-
-POST /event-management-service/v1/venues/{venueId}/sections/{sectionId}/seats/generate (optional convenience)
-
-Event APIs
-
-POST /event-management-service/v1/organiser/events
-
-PATCH /event-management-service/v1/organiser/events/{eventId}
-
-POST /event-management-service/v1/organiser/events/{eventId}/publish
-
-GET /event-management-service/v1/api/v1/events (public browse)
-
-GET /event-management-service/v1/api/v1/events/{eventId}
-
-Event pricing & inventory init
-
-POST /event-management-service/v1/organiser/events/{eventId}/pricing
-
-POST /event-management-service/v1/organiser/events/{eventId}/inventory/init
-Creates local event_seats from venue_seats
+- Add outbox pattern for guaranteed Kafka publication and retry.
+- Add dead-letter/retry topic strategy for downstream inventory propagation.
+- Add cancellation workflow and downstream event notifications.
+- Add stricter event update rules after inventory initialization and publication.
+- Add ownership and role-policy tests around every organiser/admin endpoint.
+- Add Redis/search index for public browse if read volume grows.
+- Add OpenAPI generation and contract tests for seats-allocation event payload compatibility.
