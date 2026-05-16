@@ -147,7 +147,7 @@ class VenueControllerApiTest {
 
     @Test
     void createVenueConflictApiResponse() throws Exception {
-        when(jwtService.validateAndExtractClaims("token-organiser")).thenReturn(Map.of("role", "ORGANISER"));
+        when(jwtService.validateAndExtractClaims("token-organiser")).thenReturn(Map.of("role", "ORGANIZER"));
         when(venueService.createVenue(eq("Grand Hall"), eq("Mumbai"), eq("BKC")))
                 .thenThrow(new VenueExistsException("Venue already exists for this name, city and address"));
 

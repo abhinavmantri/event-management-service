@@ -76,7 +76,7 @@ class OrganiserEventControllerApiTest {
         UUID eventId = UUID.randomUUID();
         UUID venueId = UUID.randomUUID();
         when(jwtService.validateAndExtractClaims("token-org")).thenReturn(Map.of(
-                "role", "ORGANISER",
+                "role", "ORGANIZER",
                 "id", UUID.randomUUID().toString(),
                 "email", "org@example.com"
         ));
@@ -105,7 +105,7 @@ class OrganiserEventControllerApiTest {
     void updateEventNotFoundApiResponse() throws Exception {
         UUID eventId = UUID.randomUUID();
         when(jwtService.validateAndExtractClaims("token-org")).thenReturn(Map.of(
-                "role", "ORGANISER",
+                "role", "ORGANIZER",
                 "id", UUID.randomUUID().toString(),
                 "email", "org@example.com"
         ));
@@ -130,7 +130,7 @@ class OrganiserEventControllerApiTest {
         UUID eventId = UUID.randomUUID();
         UUID sectionId = UUID.randomUUID();
         when(jwtService.validateAndExtractClaims("token-org")).thenReturn(Map.of(
-                "role", "ORGANISER",
+                "role", "ORGANIZER",
                 "id", UUID.randomUUID().toString(),
                 "email", "org@example.com"
         ));
@@ -165,7 +165,7 @@ class OrganiserEventControllerApiTest {
     void initializeInventoryBadRequestApiResponse() throws Exception {
         UUID eventId = UUID.randomUUID();
         when(jwtService.validateAndExtractClaims("token-org")).thenReturn(Map.of(
-                "role", "ORGANISER",
+                "role", "ORGANIZER",
                 "id", UUID.randomUUID().toString(),
                 "email", "org@example.com"
         ));

@@ -189,10 +189,9 @@ Authorization: Bearer <jwt>
 
 Accepted organiser role values:
 
-- `ORGANISER`
 - `ORGANIZER`
 
-Venue creation requires `ADMIN`, `ORGANISER`, or `ORGANIZER`. Public browse/detail APIs are not protected by these filters.
+Venue creation requires `ADMIN` or `ORGANIZER`. Public browse/detail APIs are not protected by these filters.
 
 ## Configuration
 

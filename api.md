@@ -16,7 +16,7 @@ Organiser and venue mutation APIs use:
 Authorization: Bearer <jwt>
 ```
 
-The organiser filter accepts JWT role values `ORGANISER` and `ORGANIZER`. Venue creation accepts `ADMIN`, `ORGANISER`, or `ORGANIZER`.
+The organiser filter accepts JWT role value `ORGANIZER`. Venue creation accepts `ADMIN` or `ORGANIZER`.
 
 Most responses use:
 
@@ -57,7 +57,7 @@ Creates a venue.
 ### Behavior Notes
 
 - Venue uniqueness is enforced by lowercase city and name.
-- Create requires JWT role `ADMIN`, `ORGANISER`, or `ORGANIZER`.
+- Create requires JWT role `ADMIN` or `ORGANIZER`.
 
 ## GET `/venues`
 
